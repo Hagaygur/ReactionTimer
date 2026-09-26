@@ -1,0 +1,158 @@
+name: Build, test and release
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+# Serialize each branch through publication so two pushes cannot reserve the
+# same version. GitHub may coalesce pending runs; the newest push still builds.
+concurrency:
+  group: reaction-timer-${{ github.event_name == 'pull_request' && github.ref || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test version policy and SDK verification
+        run: python -m unittest discover -s ci -p 'test_*.py' -v
+      - name: Install MSI extraction tools
+        run: sudo apt-get update && sudo apt-get install -y msitools
+      - name: Obtain verified Dungeon Helper SDK
+        run: python ci/get_sdk_linux.py --destination "$RUNNER_TEMP/reaction-timer-sdk"
+      - name: Cross-compile Windows solution
+        run: |
+          for configuration in Debug Release; do
+            dotnet build ReactionTimer.sln -c "$configuration" "-p:DungeonHelperDir=$DH_SDK_DIR"
+            python ci/check_build_output.py "src/bin/$configuration/net8.0-windows" "$configuration"
+          done
+          # Repeated Release builds must recreate the ZIP after loose files are removed.
+          dotnet build ReactionTimer.sln -c Release "-p:DungeonHelperDir=$DH_SDK_DIR"
+          python ci/check_build_output.py src/bin/Release/net8.0-windows Release
+      - name: Run portable behavioral tests
+        run: dotnet run --project tests/ReactionTimer.Tests.csproj -c Release --no-build -- --contracts dist/contracts-linux.json
+
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          # 8 supplies the test runtime; global.json selects SDK 10 for builds.
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test version policy
+        run: python -m unittest discover -s ci -p test_*.py -v
+      - name: Run behavioral tests and observe contracts
+        shell: pwsh
+        run: |
+          dotnet run --project tests/ReactionTimer.Tests.csproj -c Release -- --contracts dist/contracts.json
+          if ($LASTEXITCODE -ne 0) { throw 'Behavioral tests failed; no release is permitted.' }
+      - name: Compare with last stable release
+        id: version
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tags = @(git tag --merged HEAD --list 'v*' | Where-Object { $_ -match '^v[1-9]\d*\.\d+\.\d+$' } | Sort-Object { [version]$_.Substring(1) })
+          if ($LASTEXITCODE -ne 0) { throw 'Could not read tags.' }
+          if ($tags.Count -eq 0) {
+            python ci/version.py
+          } else {
+            $base = $tags[-1]
+            gh release download $base --pattern contracts.json --dir dist/baseline
+            if ($LASTEXITCODE -ne 0) {
+              $tagCommit = git rev-list -n 1 $base
+              $headCommit = git rev-parse HEAD
+              $release = gh release view $base --json isDraft | ConvertFrom-Json
+              if ($LASTEXITCODE -ne 0 -or -not $release.isDraft -or $tagCommit -ne $headCommit) {
+                throw 'Baseline contract missing. Restore the previous release asset before retrying.'
+              }
+              # Resume an interrupted first upload of this exact draft/commit.
+              Copy-Item dist/contracts.json dist/previous-contracts.json
+            } else {
+              Copy-Item dist/baseline/contracts.json dist/previous-contracts.json
+            }
+            python ci/version.py --base $base
+          }
+          if ($LASTEXITCODE -ne 0) { throw 'Version selection failed.' }
+      - name: Obtain verified Dungeon Helper SDK
+        shell: pwsh
+        run: ./ci/Get-Sdk.ps1
+      - name: Verify Debug output
+        shell: pwsh
+        run: |
+          dotnet build ReactionTimer.sln -c Debug "-p:DungeonHelperDir=$env:DH_SDK_DIR"
+          if ($LASTEXITCODE -ne 0) { throw 'Debug build failed.' }
+          python ci/check_build_output.py src/bin/Debug/net8.0-windows Debug
+          if ($LASTEXITCODE -ne 0) { throw 'Debug output validation failed.' }
+      - name: Build and package
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          ./build.ps1 -DungeonHelperDir $env:DH_SDK_DIR -Version $env:RELEASE_VERSION
+          python ci/check_build_output.py src/bin/Release/net8.0-windows Release --version $env:RELEASE_VERSION
+          if ($LASTEXITCODE -ne 0) { throw 'Release output validation failed.' }
+      - name: Windows plugin and layout smoke test
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          dotnet run --project tests/WindowsSmoke/WindowsSmoke.csproj -c Release -- "src/bin/Release/net8.0-windows/ReactionTimer-$env:RELEASE_VERSION-plugin.zip" "$env:DH_SDK_DIR"
+          if ($LASTEXITCODE -ne 0) { throw 'Windows smoke test failed.' }
+      - name: Validate package and create separate source archive
+        run: python ci/package.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reaction-timer-${{ github.sha }}
+          if-no-files-found: error
+          path: |
+            dist/*-plugin.zip
+            dist/*-source.zip
+            dist/contracts.json
+            dist/version.json
+            dist/SHA256SUMS.txt
+
+  release:
+    needs: [build, linux]
+    if: github.event_name != 'pull_request' && github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: reaction-timer-${{ github.sha }}
+          path: dist
+      - name: Publish tagged release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python ci/release.py

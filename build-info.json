@@ -1,0 +1,7 @@
+{
+  "version": "0.3.1.0",
+  "sdk": "4.2.1.0",
+  "dll_sha256": "7b6c2e325c02b82f05c59c41e2042564fe0bbb38ed18d32a5e1af584710cd004",
+  "assembly_load_check": "passed",
+  "windows_layout_tested": false
+}

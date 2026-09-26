@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="WindowsSmoke/**/*.cs" />
+    <Compile Include="../src/TimerState.cs" Link="TimerState.cs" />
+    <Compile Include="../src/Settings.cs" Link="Settings.cs" />
+    <Compile Include="../src/ReactionMatcher.cs" Link="ReactionMatcher.cs" />
+    <Compile Include="../src/HudPresentation.cs" Link="HudPresentation.cs" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,52 @@
+<Project>
+  <UsingTask TaskName="CreateReactionTimerInstaller" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <OutputDirectory ParameterType="System.String" Required="true" />
+      <ArchivePath ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.IO.Compression" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        string[] names = { "VoK.ReactionTimer.dll", "VoK.ReactionTimer.deps.json", "VoK.ReactionTimer.metadata" };
+        foreach (string name in names)
+            if (!File.Exists(Path.Combine(OutputDirectory, name)))
+                throw new FileNotFoundException("Missing installer input", name);
+        string temporary = ArchivePath + ".tmp";
+        try
+        {
+            using (var stream = File.Create(temporary))
+            using (var archive = new ZipArchive(stream, ZipArchiveMode.Create))
+                foreach (string name in names)
+                {
+                    var entry = archive.CreateEntry("plugins/ReactionTimer/" + name, CompressionLevel.Optimal);
+                    using (var input = File.OpenRead(Path.Combine(OutputDirectory, name)))
+                    using (var output = entry.Open()) input.CopyTo(output);
+                }
+            File.Copy(temporary, ArchivePath, true);
+        }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+      ]]></Code>
+    </Task>
+  </UsingTask>
+  <Target Name="PackageReactionTimer" AfterTargets="Build" Condition="'$(DesignTimeBuild)' != 'true'">
+    <PropertyGroup>
+      <PluginArchive>$(TargetDir)ReactionTimer-$(Version)-plugin.zip</PluginArchive>
+    </PropertyGroup>
+    <CreateReactionTimerInstaller OutputDirectory="$(TargetDir)" ArchivePath="$(PluginArchive)" />
+    <ItemGroup>
+      <FileWrites Include="$(PluginArchive)" />
+      <!-- Remove only this project's known products, never arbitrary output files. -->
+      <_OldPluginArchives Include="$(TargetDir)ReactionTimer-*-plugin.zip" Exclude="$(PluginArchive)" />
+      <_LoosePluginOutputs Include="$(TargetPath);$(TargetDir)$(TargetName).deps.json;$(TargetDir)$(TargetName).metadata;$(TargetDir)$(TargetName).pdb" Condition="'$(Configuration)' == 'Release'" />
+    </ItemGroup>
+    <Delete Files="@(_OldPluginArchives);@(_LoosePluginOutputs)" />
+    <Message Importance="high" Text="Plugin installer: $(PluginArchive)" />
+  </Target>
+  <Target Name="CleanReactionTimerInstaller" AfterTargets="CoreClean">
+    <ItemGroup>
+      <_PluginArchivesToClean Include="$(TargetDir)ReactionTimer-*-plugin.zip;$(TargetDir)ReactionTimer-*-plugin.zip.tmp" />
+    </ItemGroup>
+    <Delete Files="@(_PluginArchivesToClean)" />
+  </Target>
+</Project>

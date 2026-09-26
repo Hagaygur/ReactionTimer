@@ -1,0 +1,38 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug timer checks",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "Build timer tests (Debug)",
+      "program": "${workspaceFolder}/tests/bin/Debug/net8.0/ReactionTimer.Tests.dll",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "args": [
+        "--contracts",
+        "dist/contracts.json"
+      ]
+    },
+    {
+      "name": "Debug Windows layout smoke test",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "Build solution (Debug)",
+      "program": "${workspaceFolder}/tests/WindowsSmoke/bin/Debug/net8.0-windows/WindowsSmoke.dll",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "args": [
+        "${workspaceFolder}/src/bin/Debug/net8.0-windows/VoK.ReactionTimer.dll",
+        "${env:APPDATA}/Dungeon Helper"
+      ]
+    },
+    {
+      "name": "Attach to Dungeon Helper (.NET)",
+      "type": "coreclr",
+      "request": "attach",
+      "processId": "${command:pickProcess}",
+      "justMyCode": true
+    }
+  ]
+}

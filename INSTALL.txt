@@ -1,0 +1,32 @@
+ALCHEMIST REACTION TIMER 1.0.0
+
+INSTALL DDO-Reaction-Timer-DH-only.zip DIRECTLY. It contains only three runtime files.
+DDO-Reaction-Timer-source.zip is separate; do NOT import it into Dungeon Helper.
+1. Close DDO. Open Dungeon Helper Settings > Add plugin from zip file.
+2. Select DDO-Reaction-Timer-DH-only.zip.
+3. If asked to overwrite the already-installed ReactionTimer folder, choose Yes.
+4. Fully exit Dungeon Helper from its tray icon, restart it, then launch DDO.
+
+If DH refuses the update or reports a file in use:
+Fully close DDO and Dungeon Helper. Extract the ZIP. Copy the CONTENTS of
+plugins\ReactionTimer into your existing installation's plugins\ReactionTimer
+folder, replacing files. Usually this is:
+%APPDATA%\Dungeon Helper\plugins\ReactionTimer\
+Do not copy the DLL into a second plugin folder. If present, remove the old
+plugins\ReactionTimer\source subfolder while DH is closed. Keep settings/logs.
+
+USE
+Open the amber stopwatch control panel. Settings / effects > Font size (px)
+accepts 10-160; 20 and 30 save exactly. Default is 28.
+Click Preview, then Move (20s) and drag the timer to its desired position.
+Close the DH control panel while playing; the separate transparent timer stays.
+Enable Lossless Scaling and try Preview again in both WGC and DXGI.
+
+The status should say Capture exclusion: ON. This means Windows accepted the
+exclusion request; it is not proof that every LS capture backend honors it.
+If visibility still fails, report the full status, LS version, capture mode,
+and whether Preview is visible with LS off. Live LS testing is still required.
+Other Dungeon Helper panels/toolbars are not modified by this plugin.
+
+For GitHub builds, install the ReactionTimer-X.Y.Z-plugin.zip release asset.
+The GitHub repository/source archive itself is not a DH plugin installer.

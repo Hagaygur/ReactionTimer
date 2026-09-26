@@ -1,0 +1,8 @@
+{
+  "dotnet.defaultSolution": "ReactionTimer.sln",
+  "files.exclude": { "**/bin": true, "**/obj": true, "**/__pycache__": true },
+  "search.exclude": { "**/bin": true, "**/obj": true, "dist": true },
+  "editor.insertSpaces": true,
+  "editor.tabSize": 4,
+  "files.insertFinalNewline": true
+}

@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <AssemblyName>VoK.ReactionTimer</AssemblyName>
+    <RootNamespace>VoK.ReactionTimer</RootNamespace>
+    <Version>1.0.0</Version>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+    <Nullable>enable</Nullable>
+    <LangVersion>12.0</LangVersion>
+    <Deterministic>true</Deterministic>
+    <!-- Packaging must run even when Visual Studio considers compilation current. -->
+    <DisableFastUpToDateCheck>true</DisableFastUpToDateCheck>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <DungeonHelperDir Condition="'$(DungeonHelperDir)' == ''">$(AppData)\Dungeon Helper</DungeonHelperDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="VoK.Sdk">
+      <HintPath>$(DungeonHelperDir)/VoK.Sdk.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <None Update="VoK.ReactionTimer.metadata" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Target Name="CheckSdk" BeforeTargets="ResolveAssemblyReferences">
+    <Error Condition="!Exists('$(DungeonHelperDir)/VoK.Sdk.dll')" Text="VoK.Sdk.dll not found. Set DungeonHelperDir to your Dungeon Helper installation folder." />
+  </Target>
+  <Import Project="../ci/PackagePlugin.targets" />
+</Project>

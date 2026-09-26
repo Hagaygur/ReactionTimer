@@ -1,0 +1,6 @@
+{
+  "url": "https://s3.amazonaws.com/downloads.dungeonhelper.com/public/DH/4.0/DungeonHelper.msi",
+  "installerSha256": "defa159a8c53075b5d7a7234b96c4838a7332f62b495214777566e74b93fa0b1",
+  "sdkSha256": "de78e565b2f5bb5426f6b7fb81fdb1a84a8a684d77e2d148dcd5fe2867ef5484",
+  "sdkVersion": "4.2.1.0"
+}
