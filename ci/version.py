@@ -44,6 +44,17 @@ def git(*args):
     return subprocess.check_output(['git', *args], text=True).strip()
 
 
+CODE_PATHSPEC = ':(glob)src/**/*.cs'
+
+
+def code_changed(base):
+    if not base:
+        return bool(git('ls-files', '-z', '--', CODE_PATHSPEC))
+    # Compare the entire unreleased range. A later documentation commit must
+    # not hide code from an earlier failed or coalesced workflow run.
+    return bool(git('diff', '--name-only', '-z', '--no-renames', base, 'HEAD', '--', CODE_PATHSPEC))
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--contracts', default='dist/contracts.json')
@@ -54,29 +65,37 @@ def main():
     base = args.base
     reason = ['First stable release']
     reused = False
+    publish = code_changed(base)
     if not base:
-        version, level = '1.0.0', 'initial'
+        version, level = '1.0.0', 'initial' if publish else 'none'
+        if not publish:
+            reason = ['No plugin C# source files; build only']
     elif git('rev-list', '-n', '1', base) == git('rev-parse', 'HEAD'):
         previous = json.loads(Path(args.previous).read_text(encoding='utf-8-sig'))
         if current != previous:
             raise ValueError('Same commit produced a different contract; refusing to reuse its version.')
         version, level, reused = base[1:], 'reuse', True
+        publish = True  # Allow an interrupted draft for this exact commit to resume.
         reason = ['This commit already has a release tag']
+    elif not publish:
+        version, level = base[1:], 'none'
+        reason = ['Plugin C# source unchanged since the release; build only']
     else:
         previous = json.loads(Path(args.previous).read_text(encoding='utf-8-sig'))
         level, reason = classify(previous, current)
-        declared = commit_level(git('log', '--format=%B', f'{base}..HEAD'))
+        declared = commit_level(git('log', '--format=%B', f'{base}..HEAD', '--', CODE_PATHSPEC))
         ranks = {'patch': 0, 'minor': 1, 'major': 2}
         if ranks[declared] > ranks[level]:
             level = declared
             reason.append('Conventional commit declares a larger change')
         version = bump(base, level)
     result = {'version': version, 'tag': 'v' + version, 'bump': level,
-              'base': base, 'reused': reused, 'reasons': reason, 'commit': git('rev-parse', 'HEAD')}
+              'base': base, 'reused': reused, 'publish': publish,
+              'reasons': reason, 'commit': git('rev-parse', 'HEAD')}
     Path('dist/version.json').write_text(json.dumps(result, indent=2)+'\n')
     if os.environ.get('GITHUB_OUTPUT'):
         with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as stream:
-            stream.write(f'version={version}\ntag=v{version}\n')
+            stream.write(f'version={version}\ntag=v{version}\npublish={str(publish).lower()}\n')
     print(json.dumps(result, indent=2))
 
 

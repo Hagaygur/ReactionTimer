@@ -15,7 +15,9 @@ GitHub Actions and GitHub-hosted runners must be enabled. No personal access tok
 
 ## Triggers and outputs
 
-Every branch push and pull request runs checks and produces downloadable Actions artifacts. Successful default-branch pushes and manual runs on that branch also publish a tagged release. Other branches and PRs do not publish or reserve release versions. GitHub receives pushes, not unpushed local commits: a push containing several commits builds the tip and considers all commit messages since the preceding release. Rapid pushes are serialized; GitHub may coalesce pending runs in favor of the newest push.
+Every branch push and pull request runs checks and produces downloadable Actions artifacts. Successful default-branch pushes and manual runs publish a tagged release only when plugin C# source (`src/**/*.cs`, including files directly under src) differs from the last reachable stable release. Additions, edits, renames and deletions count. Documentation, tests, CI/build scripts, project configuration and metadata alone do not trigger publication or a version bump. Other branches and PRs do not publish or reserve release versions.
+
+The comparison covers the entire unreleased range, not just the last commit or push. This preserves pending code changes after a failed or coalesced run, even when the latest commit only edits documentation. Fully reverted source changes do not qualify. With no previous release, tracked plugin source permits the initial 1.0.0 release. Rapid pushes are serialized; GitHub may coalesce pending runs in favor of the newest push.
 
 Release assets:
 
@@ -25,7 +27,7 @@ Release assets:
 - `version.json`: chosen version, reason, baseline tag and source commit.
 - `SHA256SUMS.txt`: asset hashes.
 
-The workflow does not commit version changes back into the repository or create a commit loop. It stamps the checked-out build and tags the original commit. Rerunning an already released commit reuses its version and leaves its published assets intact. An interrupted draft can be resumed.
+The workflow does not commit version changes back into the repository or create a commit loop. It stamps the checked-out build and tags the original commit. Build-only runs retain the baseline version for their test artifacts and record `publish: false` in version.json; those artifacts do not represent a new release. Both the release job and publisher enforce this flag. Rerunning an already tagged commit reuses its version and leaves published assets intact; an interrupted draft for that exact commit can still be resumed.
 
 ## How versions are chosen
 
@@ -50,7 +52,7 @@ feat: add a new HUD mode                     # at least minor
 feat!: replace the settings format           # major
 ```
 
-Alternatively put `BREAKING CHANGE: explanation` in a commit body. All messages since the baseline release are considered; one breaking declaration wins over minor/patch changes. Documentation-only changes currently produce a patch release too, matching the requested default of a hotfix when no contract changed. Line counts are not used.
+Alternatively put `BREAKING CHANGE: explanation` in a commit body. Only commits touching plugin C# source since the baseline release contribute conventional-commit declarations; one breaking declaration wins over minor/patch changes. A documentation-only `feat:` or breaking-change message cannot raise the next release's version. For eligible source changes with unchanged contracts, patch remains the default. Line counts are not used.
 
 Do not rename/remove contract keys just to tidy tests: removing an observation is intentionally conservative and requests a major version. Keep the contract schema at 1 unless you also implement an explicit migration for the comparator. Do not delete release contract assets: missing baselines stop automatic release rather than guess a version.
 
@@ -63,8 +65,8 @@ Do not rename/remove contract keys just to tidy tests: removing an observation i
 5. Build on Windows with the .NET 10 SDK targeting .NET 8 and warnings treated as errors. Validate Debug outputs, then build Release and run the logic checks again. Normal builds produce the installer automatically: Release leaves only the ZIP in the plugin output directory; Debug keeps loose runtime files and PDB alongside the ZIP.
 6. A Windows smoke executable loads the plugin from the Release ZIP, checks its platform declaration and version, and exercises the control panel in a synthetic host with a wider toolbar. It checks button bounds and minimum width; it does not attach to DDO or emulate LS.
 7. Validate the installer archive's exact three entries and metadata version; produce source and hashes.
-8. In parallel, an Ubuntu job installs msitools, extracts the same hash-pinned SDK, cross-compiles Debug and Release, checks both output layouts and a repeated Release build, and runs the 44 portable C# and 15 Python checks. It cannot execute the Windows UI harness.
-9. Upload the Windows release artifacts. Only after both Windows and Linux jobs succeed, the default-branch release job publishes a draft with all assets, then makes it public.
+8. In parallel, an Ubuntu job installs msitools, extracts the same hash-pinned SDK, cross-compiles Debug and Release, checks both output layouts and a repeated Release build, and runs the 44 portable C# and 23 Python checks. It cannot execute the Windows UI harness.
+9. Upload the Windows build artifacts. Only after both Windows and Linux jobs succeed and version selection reports eligible code changes (or an exact tagged-commit retry), the default-branch release job publishes a draft with all assets, then makes it public.
 
 The public installer URL may change in place. In that case the build intentionally fails at the hash check. Verify the new upstream installer/SDK and update `ci/sdk-lock.json`; never remove the hash verification just to make the build pass. Release tags and the current default branch should retain their ancestry; avoid rewriting already released history.
 
@@ -84,7 +86,7 @@ dotnet run --project tests/ReactionTimer.Tests.csproj -c Release -- --contracts 
 
 ## Validation delivered with this repository
 
-On 2026-09-27, SDK 10.0.401 built the solution on Windows and Ubuntu 22.04 WSL against SDK 4.2.1.0. Debug/Release output checks passed, as did 44 C# checks and 15 Python checks on both operating systems. Visual Studio MSBuild and the Windows synthetic layout harness passed; the harness loaded the Release ZIP. Both SDK acquisition scripts downloaded and extracted the pinned official installer successfully. Workflow linting with actionlint 1.7.12 and source-archive validation passed locally. The GitHub-hosted run and publication remain unverified because this local source folder has no Git checkout or remote. Live DDO/LS behavior cannot be inferred from these tests.
+On 2026-09-27, SDK 10.0.401 built the solution on Windows and Ubuntu 22.04 WSL against SDK 4.2.1.0. Debug/Release output checks passed, as did 44 C# checks and 23 Python checks on both operating systems. Visual Studio MSBuild and the Windows synthetic layout harness passed; the harness loaded the Release ZIP. Both SDK acquisition scripts downloaded and extracted the pinned official installer successfully. Workflow linting with actionlint 1.7.12 and source-archive validation passed locally. The GitHub-hosted run and publication remain unverified because this local source folder has no Git checkout or remote. Live DDO/LS behavior cannot be inferred from these tests.
 
 Linux local setup and commands: [development guide](docs/human/DEVELOPMENT.md#linux-cross-compilation). Runtime support remains Windows-only. These build fixes do not change behavioral contracts: expected version impact is patch after an existing release, or the initial 1.0.0 baseline otherwise.
 

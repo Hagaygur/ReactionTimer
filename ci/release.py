@@ -10,6 +10,9 @@ def run(*args):
 
 
 info = json.loads(Path('dist/version.json').read_text())
+if info.get('publish') is not True:
+    print('Build only: no plugin code changes eligible for publication')
+    raise SystemExit(0)
 tag, commit = info['tag'], info['commit']
 # A failed draft can be resumed, but an existing tag must refer to this commit.
 exists = subprocess.run(['git', 'rev-parse', '--verify', f'refs/tags/{tag}'], capture_output=True).returncode == 0

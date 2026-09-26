@@ -74,7 +74,7 @@ In **Settings / effects**, trigger a spike, click **Refresh**, select its tempor
 - **44 executable checks passed**, including timer state, detection filters, exact 20/30 font save/reopen, invalid input rejection, migration of old settings and monitor position calculations.
 - Passed assembly type discovery, public plugin construction and UI contract creation using the actual SDK and Windows managed assemblies from DH's public installer.
 - Installer ZIP checked for exactly the three runtime entries, valid CRCs and byte-identical DLL after extraction.
-- SDK 10.0.401 solution builds pass on Windows and Ubuntu WSL, including Debug/Release packaging. Visual Studio MSBuild and the synthetic Windows toolbar/button layout smoke test pass. All 44 C# and 15 Python checks pass on both operating systems.
+- SDK 10.0.401 solution builds pass on Windows and Ubuntu WSL, including Debug/Release packaging. Visual Studio MSBuild and the synthetic Windows toolbar/button layout smoke test pass. All 44 C# and 23 Python checks pass on both operating systems.
 
 ## Implementation and rebuilding
 

@@ -17,6 +17,6 @@ Maintain a DH-only, compact, transparent DDO Alchemist Reaction Spike HUD that c
 
 ## Evidence ledger at handoff
 
-Executed on 2026-09-27: SDK 10.0.401 solution builds on Windows and Ubuntu 22.04 WSL against SDK 4.2.1.0; 44 pure C# and 15 Python checks on both; Visual Studio MSBuild; Debug/Release archive/output checks; Windows synthetic layout smoke loading the 1.0.0 Release ZIP; both pinned installer acquisition scripts; actionlint 1.7.12 workflow validation; source-archive validation. Not executed here: GitHub-hosted Actions and publication, full live DDO/LS matrix. Update this ledger only from actual results, with environment and version.
+Executed on 2026-09-27: SDK 10.0.401 solution builds on Windows and Ubuntu 22.04 WSL against SDK 4.2.1.0; 44 pure C# and 23 Python checks on both; Visual Studio MSBuild; Debug/Release archive/output checks; Windows synthetic layout smoke loading the 1.0.0 Release ZIP; both pinned installer acquisition scripts; actionlint 1.7.12 workflow validation; source-archive validation. Not executed here: GitHub-hosted Actions and publication, full live DDO/LS matrix. Update this ledger only from actual results, with environment and version.
 
 No live canonical Alchemist DIDs were established. Use names plus explicit user mappings; do not invent IDs. Do not conflate DH Crowd Source Collector with the local game-data provider. Keep runtime telemetry absent unless a future task explicitly designs it.

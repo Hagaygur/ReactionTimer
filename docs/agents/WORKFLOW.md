@@ -25,6 +25,8 @@ Human counterpart: [Operations](../human/OPERATIONS.md). Detailed CI reference: 
 
 ## Version classification
 
+Publication is gated separately from contract classification: only tracked plugin C# source under `src/**/*.cs` qualifies (including root-level src files). Compare the last reachable stable tag with HEAD using a net diff; additions, edits, renames and deletions count. Documentation, tests, build/CI scripts, project files and metadata alone produce build artifacts but no release or version bump. No-tag builds qualify only if tracked plugin source exists. Preserve exact tagged-commit retries for interrupted drafts. Conventional-commit escalation considers only commits touching the same source pathspec. `version.json` and the build job expose `publish`; both the release job and `ci/release.py` must enforce it. Do not use push-only path filters that can miss unreleased changes after failed/coalesced runs.
+
 First stable release: 1.0.0. Existing compatibility observation changes/removals and removed feature observations request major. Additions or changed feature observations request minor. Otherwise patch. `feat:` can raise to minor; `type!:` or `BREAKING CHANGE:` can raise to major. Tests must pass first. Intentionally changing an assertion requires a justified changed requirement, not a desire for green CI. Renaming a contract key counts as removal/addition and can trigger major.
 
 Use the actual preceding reachable release asset as baseline. Preserve contract schema or write a migration. Do not delete/replace a released baseline to force a smaller bump. Version stamps are generated in disposable CI checkouts; local builds edit AssemblyInfo and metadata, so inspect working-tree changes before committing.

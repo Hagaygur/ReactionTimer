@@ -18,7 +18,9 @@ dotnet run --project tests/ReactionTimer.Tests.csproj -c Release -- --contracts 
 .\build.ps1 -DungeonHelperDir "$env:APPDATA\Dungeon Helper" -Version 1.0.0
 ```
 
-The first successful stable release is 1.0.0. Changed/removed compatibility observations or removed feature observations request major; additions or feature behavior changes request minor; otherwise patch. A failing test blocks release. `feat:` and breaking-change commit declarations can raise the result. Contracts cover selected behavior, not all possible semantic changes. Branch/PR builds produce artifacts; only successful default-branch runs publish. Keep released `contracts.json` assets intact.
+The first successful stable release is 1.0.0. Publication requires changes to plugin C# files under src since the last stable release: additions, edits, renames and deletions count. Documentation, tests, CI/build scripts, project configuration and metadata alone still run checks and produce build artifacts, but do not publish or bump the version. Manual workflow runs follow the same rule. Comparing the full unreleased range preserves pending code changes after failed builds; fully reverted source changes do not qualify. Exact tagged-commit retries can resume interrupted drafts.
+
+For eligible code changes, changed/removed compatibility observations or removed feature observations request major; additions or feature behavior changes request minor; otherwise patch. A failing test blocks release. `feat:` and breaking-change declarations in commits touching plugin code can raise the result; documentation-only messages cannot. Contracts cover selected behavior, not all possible semantic changes. Branch/PR builds produce artifacts; only successful eligible default-branch runs publish. Keep released `contracts.json` assets intact.
 
 The CI SDK download is hash-pinned. If the official MSI changes, review and update the lock deliberately. Do not bypass the hash or substitute the newest SDK to make a build green.
 
