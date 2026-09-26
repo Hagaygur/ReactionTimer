@@ -75,7 +75,6 @@ In **Settings / effects**, trigger a spike, click **Refresh**, select its tempor
 - Passed assembly type discovery, public plugin construction and UI contract creation using the actual SDK and Windows managed assemblies from DH's public installer.
 - Installer ZIP checked for exactly the three runtime entries, valid CRCs and byte-identical DLL after extraction.
 - SDK 10.0.401 solution builds pass on Windows and Ubuntu WSL, including Debug/Release packaging. Visual Studio MSBuild and the synthetic Windows toolbar/button layout smoke test pass. All 44 C# and 15 Python checks pass on both operating systems.
-- **DH's live installer, live DDO effects and LS capture remain unverified here.** The user reported the 0.3.0 HUD works after removing non-runtime files. The toolbar/layout correction now passes the synthetic Windows harness but still needs confirmation inside DH. GitHub-hosted execution also remains pending.
 
 ## Implementation and rebuilding
 
