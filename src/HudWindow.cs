@@ -16,6 +16,9 @@ internal sealed class HudWindow : Form
     private readonly Action<string> _status;
     private readonly System.Windows.Forms.Timer _tick = new() { Interval = 100 };
     private readonly HudSurface _surface = new();
+    private readonly HudAlertState _liveAlert = new();
+    private HudAlertState _previewAlert = new();
+    private double _previewDuration = 15;
     private readonly FontFamily _family = new("Segoe UI");
     private readonly Font _editFont = new("Segoe UI", 11, FontStyle.Regular, GraphicsUnit.Pixel);
     private Settings _settings = new();
@@ -80,7 +83,11 @@ internal sealed class HudWindow : Form
             while (_commands.TryDequeue(out var command))
             {
                 if (command == HudCommand.Stop) { _tick.Stop(); Hide(); Application.ExitThread(); return; }
-                if (command == HudCommand.Preview) _previewStart = now;
+                if (command == HudCommand.Preview)
+                {
+                    _previewStart = now; _previewAlert = new();
+                    _previewDuration = 12 + Math.Max(3, _engine.GetSettings().RespikeAlertSeconds);
+                }
                 if (command == HudCommand.Move) _editUntil = now + 20;
             }
             if (_positionDirty && now - _lastMove > .5)
@@ -109,8 +116,10 @@ internal sealed class HudWindow : Form
                 if (screen != _screen) { _screen = screen; _needsPosition = true; }
                 _nextScreenCheck = now + 1;
             }
-            bool demo = now - _previewStart < 15;
+            bool demo = now - _previewStart < _previewDuration;
             var live = _engine.View();
+            // Advance even while hidden or previewing so old expiries never replay.
+            var liveAlert = _liveAlert.Update(live, now, _settings.RespikeAlertSeconds);
             var view = demo ? new TimerView(now - _previewStart < 12 ? TimerMode.Active : TimerMode.Expired,
                 Reaction.Pyrite, Math.Max(0, 12 - (now - _previewStart)), 12, false, 0, "Preview") : live;
             bool foreground = ForegroundAllowed();
@@ -121,7 +130,8 @@ internal sealed class HudWindow : Form
             _lastAlarm = live.Alarm;
             _status(_captureStatus + (editing ? " • drag timer now" : display ? " • HUD visible" : " • HUD hidden"));
             if (!display) { if (Visible) Hide(); return; }
-            Render(view, demo, now);
+            var alert = demo ? _previewAlert.Update(view, now, _settings.RespikeAlertSeconds) : liveAlert;
+            Render(view, demo, now, alert);
             if (!Visible) { Show(); _nextRaise = 0; }
             // LS may raise its own window after scaling begins. Reassert Z-order
             // only while the game, LS or DH is active, without ever taking focus.
@@ -154,7 +164,7 @@ internal sealed class HudWindow : Form
             catch (System.ComponentModel.Win32Exception) { }
         return _foregroundAllowed;
     }
-    private void Render(TimerView view, bool demo, double now)
+    private void Render(TimerView view, bool demo, double now, HudAlertFrame alert)
     {
         string text = HudPresentation.Text(view, demo);
         bool urgent = view.Mode == TimerMode.Expired || (view.Mode == TimerMode.Active && view.Remaining <= _settings.WarningSeconds);
@@ -165,10 +175,11 @@ internal sealed class HudWindow : Form
             Reaction.Verdanite => Color.FromArgb(103, 222, 159),
             _ => Color.FromArgb(180, 208, 230)
         };
-        string key = $"{text}/{color.ToArgb()}/{_settings.FontSizePixels}/{(_editing ? Math.Ceiling(_editUntil - now) : 0)}";
+        int fontPixels = alert.FontSize(_settings.FontSizePixels);
+        string key = $"{text}/{color.ToArgb()}/{fontPixels}/{alert.BlackBackground}/{(_editing ? Math.Ceiling(_editUntil - now) : 0)}";
         if (key == _lastRenderKey && !_needsPosition) return;
         using var path = new GraphicsPath();
-        path.AddString(text, _family, (int)FontStyle.Bold, _settings.FontSizePixels, PointF.Empty, StringFormat.GenericTypographic);
+        path.AddString(text, _family, (int)FontStyle.Bold, fontPixels, PointF.Empty, StringFormat.GenericTypographic);
         var bounds = path.GetBounds();
         using (var shift = new Matrix()) { shift.Translate(5 - bounds.X, 5 - bounds.Y); path.Transform(shift); }
         int width = Math.Max(_editing ? 230 : 1, (int)Math.Ceiling(bounds.Width) + 10);
@@ -186,6 +197,11 @@ internal sealed class HudWindow : Form
         var g = _surface.Graphics!;
         g.CompositingMode = CompositingMode.SourceCopy; g.Clear(Color.Transparent);
         g.CompositingMode = CompositingMode.SourceOver; g.SmoothingMode = SmoothingMode.AntiAlias;
+        if (alert.BlackBackground)
+        {
+            using var background = new SolidBrush(Color.Black);
+            g.FillRectangle(background, 0, 0, width, height);
+        }
         if (_editing)
         {
             using var plate = new SolidBrush(Color.FromArgb(160, 20, 24, 30)); g.FillRectangle(plate, 0, 0, width, height);

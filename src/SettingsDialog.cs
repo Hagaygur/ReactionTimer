@@ -18,6 +18,7 @@ internal sealed class SettingsDialog : Form
         AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill };
     private readonly ComboBox _reaction = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 110 };
     private readonly NumericUpDown _warning = new() { Minimum = 0, Maximum = 10, DecimalPlaces = 1, Increment = .5m, Width = 65 };
+    private readonly NumericUpDown _alertSeconds = new() { Name = "RespikeAlertSeconds", Minimum = 0, Maximum = 60, Width = 65 };
     private readonly TextBox _size = new() { Width = 55, MaxLength = 3 };
     private readonly CheckBox _sound = new() { Text = "Sound when spike ends", AutoSize = true };
     private readonly Label _status = new() { Dock = DockStyle.Fill, AutoEllipsis = true, Padding = new Padding(4) };
@@ -30,29 +31,36 @@ internal sealed class SettingsDialog : Form
         StartPosition = FormStartPosition.CenterParent; ShowInTaskbar = false;
         AutoScaleMode = AutoScaleMode.Dpi;
         Font = new Font("Segoe UI", 9);
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 6, Padding = new Padding(10) };
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 45));
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 7, Padding = new Padding(10) };
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 45));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
-        var controls = new FlowLayoutPanel { Dock = DockStyle.Fill };
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        var controls = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true };
         _warning.Value = (decimal)_settings.WarningSeconds; _size.Text = _settings.FontSizePixels.ToString(CultureInfo.InvariantCulture);
         _sound.Checked = _settings.SoundOnExpiry;
         controls.Controls.AddRange(new Control[] { new Label { Text = "Warn at (sec)", AutoSize = true, Padding = new Padding(0, 6, 0, 0) }, _warning,
             new Label { Text = "Font size (px)", AutoSize = true, Padding = new Padding(8, 6, 0, 0) }, _size, _sound });
         layout.Controls.Add(controls, 0, 0);
-        layout.Controls.Add(new Label { Dock = DockStyle.Fill, Text = "Automatic detection looks for Reaction Spike names. If needed, trigger a spike, click Refresh, select its temporary effect and assign a reaction. Recent effects remain listed for 60 seconds." }, 0, 1);
+        _alertSeconds.Value = _settings.RespikeAlertSeconds;
+        var alertControls = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true };
+        alertControls.Controls.AddRange(new Control[] {
+            new Label { Text = "Re-spike alert (sec)", AutoSize = true, Padding = new Padding(0, 6, 0, 0) }, _alertSeconds,
+            new Label { Text = "2× text + flashing black background (0 = off)", AutoSize = true, Padding = new Padding(8, 6, 0, 0) } });
+        layout.Controls.Add(alertControls, 0, 1);
+        layout.Controls.Add(new Label { Dock = DockStyle.Fill, Text = "Automatic detection looks for Reaction Spike names. If needed, trigger a spike, click Refresh, select its temporary effect and assign a reaction. Recent effects remain listed for 60 seconds." }, 0, 2);
         _grid.Columns.Add("did", "Effect DID"); _grid.Columns[0].FillWeight = 23;
         _grid.Columns.Add("name", "Name"); _grid.Columns[1].FillWeight = 70;
         _grid.Columns.Add("duration", "Duration"); _grid.Columns[2].FillWeight = 20;
         _grid.Columns.Add("age", "Last seen"); _grid.Columns[3].FillWeight = 23;
         _grid.Columns.Add("mapping", "Override"); _grid.Columns[4].FillWeight = 24;
-        layout.Controls.Add(_grid, 0, 2);
+        layout.Controls.Add(_grid, 0, 3);
         foreach (var r in Enum.GetValues<Reaction>()) _reaction.Items.Add(r);
         _reaction.SelectedItem = Reaction.Pyrite;
-        var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(0, 5, 0, 0) };
+        var actions = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(0, 5, 0, 0) };
         var refresh = new Button { Text = "Refresh", AutoSize = true };
         var assign = new Button { Text = "Track selected", AutoSize = true };
         var remove = new Button { Text = "Clear override", AutoSize = true };
@@ -62,8 +70,8 @@ internal sealed class SettingsDialog : Form
         remove.Click += (_, _) => SetMapping(false);
         export.Click += (_, _) => Export();
         actions.Controls.AddRange(new Control[] { refresh, _reaction, assign, remove, export });
-        layout.Controls.Add(actions, 0, 3); layout.Controls.Add(_status, 0, 4);
-        var footer = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft };
+        layout.Controls.Add(actions, 0, 4); layout.Controls.Add(_status, 0, 5);
+        var footer = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, FlowDirection = FlowDirection.RightToLeft };
         var save = new Button { Text = "Save", AutoSize = true };
         var cancel = new Button { Text = "Cancel", AutoSize = true, DialogResult = DialogResult.Cancel };
         save.Click += (_, _) =>
@@ -73,13 +81,14 @@ internal sealed class SettingsDialog : Form
                 if (!SettingsInput.TryFontSize(_size.Text, out int pixels))
                 { _status.Text = "Font size must be a whole number from 10 to 160 pixels. No changes saved."; _size.Focus(); return; }
                 _settings.WarningSeconds = (double)_warning.Value; _settings.FontSizePixels = pixels;
+                _settings.RespikeAlertSeconds = (int)_alertSeconds.Value;
                 // Position/enabled state may have changed through the HUD controls while this dialog was open.
                 var current = _engine.GetSettings(); _settings.HudX = current.HudX; _settings.HudY = current.HudY; _settings.HudEnabled = current.HudEnabled;
                 _settings.SoundOnExpiry = _sound.Checked; _engine.SaveSettings(_settings); DialogResult = DialogResult.OK; Close();
             }
             catch (Exception e) { _status.Text = "Could not save settings: " + e.Message; }
         };
-        footer.Controls.AddRange(new Control[] { save, cancel }); layout.Controls.Add(footer, 0, 5);
+        footer.Controls.AddRange(new Control[] { save, cancel }); layout.Controls.Add(footer, 0, 6);
         CancelButton = cancel; AcceptButton = save; Controls.Add(layout); Populate();
     }
     private void Populate()

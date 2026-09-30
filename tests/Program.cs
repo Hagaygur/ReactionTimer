@@ -76,6 +76,13 @@ internal static class Program
             File.WriteAllText(store.ConfigPath, "{\"TextScalePercent\":180,\"EffectMappings\":{\"42\":\"Pyrite\"}}");
             var migrated = store.Load();
             Assert(migrated.FontSizePixels == 28 && migrated.EffectMappings[42] == Reaction.Pyrite, "old settings retain mappings and use new pixel default");
+            Assert(migrated.RespikeAlertSeconds == 5, "old settings receive five-second respike alert");
+            foreach (int seconds in new[] { 0, 1, 17, 60 })
+            {
+                migrated.RespikeAlertSeconds = seconds; store.Save(migrated);
+                Assert(store.Load().RespikeAlertSeconds == seconds && migrated.Copy().RespikeAlertSeconds == seconds,
+                    $"alert duration {seconds}s survives save and copy");
+            }
         }
         finally { Directory.Delete(temp, true); }
         var monitor = new Rectangle(-1920, 0, 1920, 1080);
@@ -84,6 +91,33 @@ internal static class Program
         var active = new TimerView(TimerMode.Active, Reaction.Pyrite, 3.5, 12, false, 0, "");
         Assert(HudPresentation.Text(active, false) == "PYRITE  3.5", "compact countdown text");
         Assert(HudPresentation.Text(active, true) == "PREVIEW  3.5", "preview clearly marked");
+        var alertState = new HudAlertState();
+        var expired = active with { Mode = TimerMode.Expired, Remaining = 0, Alarm = 1 };
+        Assert(!alertState.Update(active, 0, 5).Enlarged, "active countdown has no respike alert");
+        var alert = alertState.Update(expired, 10, 5);
+        Assert(alert.Enlarged && alert.BlackBackground && alert.FontSize(30) == 60,
+            "expiry doubles text and starts on black");
+        Assert(alert.FontSize(160) == 320 && settings.FontSizePixels == 160, "alert doubles maximum font without mutating saved size");
+        Assert(!alertState.Update(expired, 10.5, 5).BlackBackground && alertState.Update(expired, 10.5, 5).Enlarged,
+            "black background switches off after half a second while text stays large");
+        Assert(alertState.Update(expired, 11, 5).BlackBackground, "black background repeats once per second");
+        Assert(alertState.Update(expired, 14.9, 60).Enlarged, "appearance change preserves current alert");
+        Assert(!alertState.Update(expired, 15, 60).Enlarged, "duration changes do not extend current alert");
+        Assert(!alertState.Update(expired, 50, 5).Enlarged, "expired polling and hidden time cannot replay alert");
+        Assert(alertState.Update(expired with { Alarm = 2 }, 51, 5).Enlarged, "new expiry alarm starts fresh alert");
+        Assert(!alertState.Update(active, 52, 5).Enlarged, "respiking cancels alert immediately");
+        Assert(alertState.Update(expired with { Alarm = 3 }, 53, 5).Enlarged, "subsequent expiry alerts again");
+        Assert(!alertState.Update(expired with { Mode = TimerMode.Disconnected }, 54, 5).Enlarged, "logout cancels alert");
+        Assert(!alertState.Update(expired with { Mode = TimerMode.Paused }, 55, 5).Enlarged, "paused state does not alert");
+        Assert(!alertState.Update(expired with { Alarm = 4 }, 56, 0).Enlarged, "zero seconds disables alert");
+        Assert(!alertState.Update(expired with { Alarm = 4 }, 57, 5).Enlarged, "enabling alert does not replay an old expiry");
+        Assert(alertState.Update(expired with { Alarm = 5 }, 58, 1).Enlarged &&
+            !alertState.Update(expired with { Alarm = 5 }, 59, 1).Enlarged, "configured one-second alert ends exactly");
+        Assert(new HudAlertFrame(false, false).FontSize(30) == 30, "normal font restored after alert");
+        settings.RespikeAlertSeconds = -1; settings.Validate();
+        Assert(settings.RespikeAlertSeconds == 0, "negative alert duration bounded");
+        settings.RespikeAlertSeconds = 999; settings.Validate();
+        Assert(settings.RespikeAlertSeconds == 60, "maximum alert duration bounded");
         Console.WriteLine($"{_count} checks passed.");
         if (args.Length == 2 && args[0] == "--contracts") ContractSnapshot.Write(args[1]);
     }

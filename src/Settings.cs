@@ -10,18 +10,20 @@ internal sealed class Settings
 {
     public double WarningSeconds { get; set; } = 2;
     public bool SoundOnExpiry { get; set; }
+    public int RespikeAlertSeconds { get; set; } = 5;
     public int FontSizePixels { get; set; } = 28;
     public bool HudEnabled { get; set; } = true;
     public double HudX { get; set; } = .5;
     public double HudY { get; set; } = .72;
     public Dictionary<int, Reaction> EffectMappings { get; set; } = new();
     public Settings Copy() => new() { WarningSeconds = WarningSeconds, SoundOnExpiry = SoundOnExpiry,
-        FontSizePixels = FontSizePixels, HudEnabled = HudEnabled, HudX = HudX, HudY = HudY, EffectMappings = new(EffectMappings) };
+        RespikeAlertSeconds = RespikeAlertSeconds, FontSizePixels = FontSizePixels, HudEnabled = HudEnabled, HudX = HudX, HudY = HudY, EffectMappings = new(EffectMappings) };
     public void Validate()
     {
         if (!double.IsFinite(WarningSeconds)) WarningSeconds = 2;
         WarningSeconds = Math.Clamp(WarningSeconds, 0, 10);
         FontSizePixels = Math.Clamp(FontSizePixels, 10, 160);
+        RespikeAlertSeconds = Math.Clamp(RespikeAlertSeconds, 0, 60);
         HudX = double.IsFinite(HudX) ? Math.Clamp(HudX, 0, 1) : .5;
         HudY = double.IsFinite(HudY) ? Math.Clamp(HudY, 0, 1) : .72;
         EffectMappings ??= new();

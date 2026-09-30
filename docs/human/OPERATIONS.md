@@ -8,6 +8,8 @@ Close DDO before updating and fully restart DH afterward. If files are locked, c
 
 Use the stopwatch panel to set font size, preview and move the HUD. Move unlocks dragging for 20 seconds. Close the panel during play; the independent timer remains. Test a real reaction after testing the preview. If names cannot be resolved, trigger the temporary spike, refresh the effects list, select it, assign its reaction and save the DID override.
 
+In Settings, **Re-spike alert (sec)** controls the expiry alert: 5 seconds by default, 0–60 seconds, with 0 turning it off. Expiry doubles the text size and flashes a black background once per second while keeping the text visible. After the interval it returns to the normal transparent RE-SPIKE display; detecting a new spike ends the alert early. The saved font size stays exact. Preview shows the countdown followed by the alert. Other duration changes apply on the next expiry; choosing 0 cancels an ongoing alert.
+
 ## Development and release
 
 The complete setup and workflow explanation is in [GITHUB.md](../../GITHUB.md). Upload repository contents at the root, including `.github`. Windows builds and Linux cross-builds use the .NET 10 SDK targeting .NET 8 and the compatible DH SDK; Python 3 runs the version-policy and SDK verification checks. The source build script modifies version stamps in the working copy. Normal Release plugin builds leave only the installer ZIP in their output directory; Debug builds also retain the DLL, supporting files and PDB. See [development](DEVELOPMENT.md) for Linux commands and output paths.

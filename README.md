@@ -29,6 +29,7 @@ See [GITHUB.md](GITHUB.md) for the included GitHub Actions workflow: first stabl
 
 ## Overlay features
 
+- **Re-spike visual alert:** when the spike ends, text grows to twice its saved size and a black background flashes once per second. Configure **Re-spike alert (sec)** in Settings: 5 seconds by default, 0–60 seconds, with 0 disabling it. Text stays readable during flashes; a new spike or the timeout restores normal size and transparency. Preview demonstrates it too.
 - **Independent transparent HUD:** the countdown now uses its own top-level, click-through window. Only outlined text is drawn during normal play: no title bar, panel background, progress bar or large empty container.
 - **Lossless Scaling approach:** the HUD requests Windows `WDA_EXCLUDEFROMCAPTURE`, verifies the setting, and stays above the scaling window without activating itself. This is intended to prevent a captured, enlarged duplicate while retaining the original text above LS. It avoids relying on DH's hosted panel being present in WGC's captured image. Actual compatibility needs testing on your Windows/LS setup.
 - **Exact font-size input:** replaces the old 60–180% setting with integer pixels, 10–160. Entering 20 or 30 saves that exact value. Invalid input shows an error instead of silently substituting a size. Old effect mappings are retained; the new font default is 28px.
