@@ -9,3 +9,8 @@
 *.py text eol=lf
 *.zip binary
 *.dll binary
+*.entitlement binary
+*.sig binary
+*.manifest binary
+*.pem binary
+*.png binary
