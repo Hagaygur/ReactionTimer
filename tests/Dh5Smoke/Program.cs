@@ -547,8 +547,11 @@ internal static class Program
             int? spCur = (int?)snap.GetType().GetProperty("SpellPointsCurrent")!.GetValue(snap);
             int? spMax = (int?)snap.GetType().GetProperty("SpellPointsMax")!.GetValue(snap);
 
+            string detail = view.GetType().GetProperty("Detail")!.GetValue(view)?.ToString() ?? "";
+            string logPath = Path.Combine(pluginFolder, "reaction-timer.log");
+            string logText = File.Exists(logPath) ? File.ReadAllText(logPath).Replace("\r", "").Replace("\n", " | ") : "(no log)";
             Require(mode == "Active" && reaction == "Pyrite" && remaining is > 1 and <= 12,
-                $"Async scan detected active Pyrite spike ({remaining:0.0}s remaining via Expiration)");
+                $"Async scan detected active Pyrite spike ({remaining:0.0}s remaining via Expiration; got mode={mode}, reaction={reaction}, base={baseStance}, detail='{detail}', sp={spCur}/{spMax}, log='{logText}')");
             Require(baseStance == "Pyrite", "Async scan detected persistent Pyrite Reaction base stance");
             Require(spCur == 1200 && spMax == 2000, "Async scan captured live Spell Points (1200/2000)");
 
