@@ -64,6 +64,7 @@ internal sealed class TimerEngine : IDisposable
     private double _nextScan, _lastErrorLog = -100;
     private TimerView _view = new(TimerMode.Waiting, Reaction.Any, null, 12, false, 0, "Waiting for effect data");
     private ulong? _character;
+    private bool _inTown;
     internal static double Now => Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency;
     internal string Folder => _store.DirectoryPath;
     internal IntPtr GameWindow { get; }
@@ -75,6 +76,7 @@ internal sealed class TimerEngine : IDisposable
         _data = data; GameWindow = data.GetGameWindowHandle(); _store = new SettingsStore(folder);
         try { _settings = _store.Load(); }
         catch (Exception e) { _settings = new(); Log("Settings could not be loaded; defaults in use: " + e.Message); }
+        _state.SetTownState(false, _settings.SuppressAlertsInTown);
         // SDK 4.2.1 registrars do not expose unsubscription. Each handler becomes
         // a no-op on disposal; Dungeon Helper owns and destroys the per-client provider.
         var ev = data.EventProvider;
@@ -103,8 +105,9 @@ internal sealed class TimerEngine : IDisposable
             bool mappingsChanged = _settings.EffectMappings.Count != settings.EffectMappings.Count ||
                 _settings.EffectMappings.Any(x => !settings.EffectMappings.TryGetValue(x.Key, out var r) || r != x.Value);
             _store.Save(settings); _settings = settings.Copy();
+            _state?.SetTownState(_inTown, _settings.SuppressAlertsInTown);
             Interlocked.Increment(ref _settingsRevision);
-            if (mappingsChanged) { _state.Reset(_character.HasValue); _nextScan = 0; }
+            if (mappingsChanged) { _state?.Reset(_character.HasValue); _nextScan = 0; }
         }
     }
     internal void SavePosition(double x, double y)
@@ -134,7 +137,8 @@ internal sealed class TimerEngine : IDisposable
             {
                 if (e.Kind == 4 || e.Kind == 6)
                 {
-                    _state.Reset(e.Kind == 4); _effects.Clear(); _names.Clear(); _character = null;
+                    _state.Reset(e.Kind == 4); _effects.Clear(); _names.Clear(); _character = null; _inTown = false;
+                    _state.SetTownState(false, _settings.SuppressAlertsInTown);
                     _nextScan = e.Kind == 4 ? now + .25 : now + 1;
                     continue;
                 }
@@ -148,6 +152,8 @@ internal sealed class TimerEngine : IDisposable
                 }
                 string name = NameFor(e.Did, now);
                 Remember(e.Did, name, e.Duration, now);
+                if (ReactionMatcher.MatchBaseStance(name, e.Duration) is { } baseStance)
+                    _state.SetBaseStance(baseStance);
                 var reaction = Match(e.Did, name, e.Duration);
                 if (reaction is null) continue;
                 double duration = e.Duration is > 0 and <= 120 ? e.Duration.Value : 12;
@@ -172,20 +178,32 @@ internal sealed class TimerEngine : IDisposable
         if (character != _character)
         {
             _state.Reset(character.HasValue && character != 0); _effects.Clear(); _names.Clear();
-            _character = character;
+            _character = character; _inTown = false;
         }
         if (!character.HasValue || character == 0) { _state.Reset(false); return; }
+        try { _inTown = _data.InTown() == true; }
+        catch { /* Town detection is optional; fall back cleanly. */ }
+        _state.SetTownState(_inTown, _settings.SuppressAlertsInTown);
+
         var active = _data.GetActiveEffects();
         if (active is null) throw new InvalidOperationException("Active effects not available");
         // Snapshot before reconciliation. A failed enumeration must not remove tracked effects.
         var entries = active.Values.ToArray();
         var ids = new HashSet<int>();
+        Reaction? detectedBaseStance = null;
         foreach (var effect in entries)
         {
             ids.Add(effect.EffectId);
             string name = NameFor(effect.EffectDid, now);
             Remember(effect.EffectDid, name, effect.Duration, now);
-            if (_state.Contains(effect.EffectId)) continue;
+            if (ReactionMatcher.MatchBaseStance(name, effect.Duration) is { } stance)
+                detectedBaseStance = stance;
+            bool pausedChanged = false;
+            if (_state.Contains(effect.EffectId))
+            {
+                pausedChanged = _state.IsPaused(effect.EffectId) != effect.IsPaused;
+                if (!pausedChanged) continue;
+            }
             var reaction = Match(effect.EffectDid, name, effect.Duration);
             if (reaction is null) continue;
             double? remaining = null;
@@ -199,8 +217,9 @@ internal sealed class TimerEngine : IDisposable
             // A paused effect with no reliable remaining time is displayed as PAUSED.
             if (effect.IsPaused) remaining = null;
             _state.Apply(effect.EffectId, effect.EffectDid, reaction.Value, remaining,
-                effect.Duration is > 0 ? effect.Duration.Value : 12, effect.IsPaused, false, now, false);
+                effect.Duration is > 0 ? effect.Duration.Value : 12, effect.IsPaused, false, now, refresh: pausedChanged);
         }
+        _state.SetBaseStance(detectedBaseStance ?? Reaction.Any);
         _state.Retain(ids);
         foreach (var did in _effects.Where(x => now - x.Value.LastSeen > 60).Select(x => x.Key).ToArray()) _effects.Remove(did);
     }

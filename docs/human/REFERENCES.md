@@ -1,29 +1,28 @@
-# External references and SDK research
+# External references, SDKs & HCI research
 
-Checked 2026-09-27. External pages can change; the pinned binary and current code determine this project's actual compatibility.
+## Platform & SDK references
 
-| Resource | Where to read | How to use it |
+| Resource | Where to read | Role |
 | --- | --- | --- |
-| DH installation and requirements | [Dungeon Helper home](https://dungeonhelper.com/) | Official installation and troubleshooting guidance |
-| DH plugin framework | [FAQ](https://dungeonhelper.com/frequently-asked-questions/) | Host requirements and developer starting points |
-| SDK documentation | [SDK root](https://sdk.dungeonhelper.com/) | Official documentation location identified by the SDK publisher; root timed out during this review |
-| SDK package metadata | [VoK.Sdk on NuGet](https://www.nuget.org/packages/VoK.Sdk/) | Release metadata and publisher's documentation pointer; newest package is not automatically compatible |
-| SDK code reference example | [4.3.4 provider file reference](https://sdk.dungeonhelper.com/4.3.4/IDdoGameDataProvider_8cs.html) | Indexed official reference, but a different version from our 4.2.1 target |
-| Crowd Source Collector | [Official plugin page](https://dungeonhelper.com/plugins/crowd-source-collector/) | Collector purpose and documented data categories |
-| Data handling | [DH privacy policy](https://dungeonhelper.com/privacy-policy/) | Collector opt-out, processing and sharing policy |
-| Capture exclusion | [SetWindowDisplayAffinity](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowdisplayaffinity) | Top-level-window requirements and exclusion modes |
-| Alpha HUD drawing | [UpdateLayeredWindow](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-updatelayeredwindow) | Native layered-window rendering |
-| Window flags | [Extended window styles](https://learn.microsoft.com/en-us/windows/win32/winmsg/extended-window-styles) | Layered, transparent and no-activate flags |
-| Agent documentation | [AGENTS.md format](https://agents.md/) | Open Markdown entry point for coding-agent instructions |
+| Dungeon Helper 4 & FAQ | [dungeonhelper.com](https://dungeonhelper.com/) | Host requirements & troubleshooting |
+| Dungeon Helper 5 Beta | [beta.dungeonhelper.com](https://beta.dungeonhelper.com/) | DH 5 architecture, `Install from zip`, trust model |
+| DH 5 SDK `5.3.0` docs | [sdk.dungeonhelper.com/5.3.0](http://sdk.dungeonhelper.com/5.3.0/) | `IPlugin`, `IDdoGameDataProvider`, `IActiveEffect.Expiration`, `InvokeHotbar`, `ImGuiNET` |
+| Windows Capture Exclusion | [SetWindowDisplayAffinity](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowdisplayaffinity) | `WDA_EXCLUDEFROMCAPTURE` (`0x11`) on DH 4 |
+| Layered HUD Drawing | [UpdateLayeredWindow](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-updatelayeredwindow) | Premultiplied-alpha DIB rendering on DH 4 |
 
-## SDK fallback when the site is unavailable
+## Verified academic HCI & accessibility sources
 
-Open the actual `VoK.Sdk.dll` in an IDE object browser or inspect its assembly metadata. If matching XML documentation is available, use it with that same version. Consult `ci/sdk-lock.json` for the binary expected by CI. The guessed `/4.2.1/` documentation URL could not be verified; do not treat it as a confirmed published documentation tree. A newer version's reference can suggest names, but validate signatures against 4.2.1 before using them.
+1. **Myers, B. A. (1985).** *The Importance of Percent-Done Progress Indicators for Computer-Human Interfaces.* CHI '85. https://doi.org/10.1145/317456.317459
+2. **Edworthy, J., Loxley, S., & Dennis, I. (1991).** *Improving Auditory Warning Design.* Human Factors, 33(2), 205–231. https://doi.org/10.1177/001872089103300206
+3. **Weiser, M., & Brown, J. S. (1997).** *The Coming Age of Calm Technology.* Springer. https://doi.org/10.1007/978-1-4612-0685-9_6
+4. **Matthews, T., Dey, A. K., Mankoff, J., Carter, S., & Rattenbury, T. (2004).** *A Toolkit for Managing User Attention in Peripheral Displays.* UIST '04. https://doi.org/10.1145/1029632.1029676
+5. **Sweetser, P., & Wyeth, P. (2005).** *GameFlow: a model for evaluating player enjoyment in games.* ACM CIE. https://doi.org/10.1145/1077246.1077253
+6. **Edworthy, J., & Hellier, E. (2006).** *Alarms and human behaviour: implications for medical alarms.* British Journal of Anaesthesia, 97(1), 12–17. https://doi.org/10.1093/bja/ael114
+7. **Matthews, T., Rattenbury, T., & Carter, S. (2007).** *Defining, Designing, and Evaluating Peripheral Displays.* HCI, 22(1–2), 221–261. https://doi.org/10.1080/07370020701307997
+8. **Okabe, M., & Ito, K. (2008).** *Color Universal Design (CUD).* https://jfly.uni-koeln.de/color/
+9. **Desurvire, H., & Wiberg, C. (2009).** *Game Usability Heuristics (PLAY).* LNCS 5621, Springer. https://doi.org/10.1007/978-3-642-02774-1_60
+10. **Risko, E. F., & Gilbert, S. J. (2016).** *Cognitive Offloading.* Trends in Cognitive Sciences, 20(9), 676–688. https://doi.org/10.1016/j.tics.2016.07.002
+11. **Blascheck, T., Besançon, L., Bezerianos, A., Lee, B., & Isenberg, P. (2019).** *Glanceable Visualization.* IEEE TVCG. https://doi.org/10.1109/TVCG.2018.2865142
+12. **W3C (2023).** *WCAG 2.2* ([2.3.1 Three Flashes `<=3 Hz`](https://www.w3.org/WAI/WCAG22/Understanding/three-flashes-or-below-threshold.html), [2.5.8 Target Size](https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html)) & **Google Material Design 3** ([Dark Tonal Elevation](https://m3.material.io/styles/elevation/overview)).
 
-Relevant symbols used by this project are `IDdoPlugin`, `IPluginUI`, `IDdoGameDataProvider`, `GetActiveEffects`, `GetGameWindowHandle`, `GetCurrentCharacterId`, `GetWeenieProperties`, `IActiveEffect.CalculateExpiration`, and the express/suppress/duration/login/logout events. Code in `ReactionTimerPlugin.cs` is the local integration map.
-
-## Crowd Source Collector is separate
-
-The official page describes an optional, bundled plugin with no UI. It lists server, quest/world-object, client-version and social-panel data categories. The policy describes anonymized cloud collection and opt-out by disabling that plugin. Read those primary pages for the full scope.
-
-Our timer does not call Collector or its backend. This review did not verify a public Collector API, source repository or supported endpoint for retrieving effect IDs. Do not infer one from similarly named projects. For reaction debugging, use local SDK effect observations and this timer's diagnostics export. Agent counterpart: [Research guidance](../agents/REFERENCES.md).
+Agent counterpart: [Research guidance](../agents/REFERENCES.md).

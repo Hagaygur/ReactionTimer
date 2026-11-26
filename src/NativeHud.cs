@@ -8,6 +8,22 @@ namespace VoK.ReactionTimer;
 internal static class NativeHud
 {
     internal const int Layered = 0x80000, Transparent = 0x20, NoActivate = 0x08000000, ToolWindow = 0x80;
+    private static readonly Lazy<bool> s_isWineRuntime = new(DetectWineRuntime);
+    internal static bool IsWineRuntime => s_isWineRuntime.Value;
+
+    private static bool DetectWineRuntime()
+    {
+        try
+        {
+            IntPtr ntdll = GetModuleHandleW("ntdll.dll");
+            return ntdll != IntPtr.Zero && GetProcAddress(ntdll, "wine_get_version") != IntPtr.Zero;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     [StructLayout(LayoutKind.Sequential)] internal struct Point { public int X, Y; public Point(int x, int y) { X = x; Y = y; } }
     [StructLayout(LayoutKind.Sequential)] internal struct Size { public int X, Y; public Size(int x, int y) { X = x; Y = y; } }
     [StructLayout(LayoutKind.Sequential, Pack = 1)] internal struct Blend { public byte Operation, Flags, Alpha, Format; }
@@ -16,6 +32,10 @@ internal static class NativeHud
         public uint Size; public int Width, Height; public ushort Planes, Bits;
         public uint Compression, ImageSize; public int XPixels, YPixels; public uint Used, Important;
     }
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr GetModuleHandleW(string moduleName);
+    [DllImport("kernel32.dll", CharSet = CharSet.Ansi, SetLastError = true)]
+    private static extern IntPtr GetProcAddress(IntPtr module, string procName);
     [DllImport("user32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool SetWindowDisplayAffinity(IntPtr window, uint affinity);
     [DllImport("user32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)]

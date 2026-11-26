@@ -6,6 +6,8 @@ using System.Text.Json.Serialization;
 
 namespace VoK.ReactionTimer;
 
+internal enum HudDisplayMode { CompactPill, RadialDonut }
+
 internal sealed class Settings
 {
     public double WarningSeconds { get; set; } = 2;
@@ -15,9 +17,38 @@ internal sealed class Settings
     public bool HudEnabled { get; set; } = true;
     public double HudX { get; set; } = .5;
     public double HudY { get; set; } = .72;
+    public bool SuppressAlertsInTown { get; set; } = true;
+    public bool ShowDepletionBar { get; set; } = true;
+    public UiTheme Theme { get; set; } = UiTheme.EberronGold;
+    public HudDisplayMode HudMode { get; set; } = HudDisplayMode.CompactPill;
+    public double HudOpacity { get; set; } = 0.90;
+    public bool ShowSpellPointsBar { get; set; } = true;
+    public bool QuickRespikeEnabled { get; set; }
+    public int QuickRespikeBar { get; set; }
+    public int QuickRespikeSlot { get; set; }
     public Dictionary<int, Reaction> EffectMappings { get; set; } = new();
-    public Settings Copy() => new() { WarningSeconds = WarningSeconds, SoundOnExpiry = SoundOnExpiry,
-        RespikeAlertSeconds = RespikeAlertSeconds, FontSizePixels = FontSizePixels, HudEnabled = HudEnabled, HudX = HudX, HudY = HudY, EffectMappings = new(EffectMappings) };
+
+    public Settings Copy() => new()
+    {
+        WarningSeconds = WarningSeconds,
+        SoundOnExpiry = SoundOnExpiry,
+        RespikeAlertSeconds = RespikeAlertSeconds,
+        FontSizePixels = FontSizePixels,
+        HudEnabled = HudEnabled,
+        HudX = HudX,
+        HudY = HudY,
+        SuppressAlertsInTown = SuppressAlertsInTown,
+        ShowDepletionBar = ShowDepletionBar,
+        Theme = Theme,
+        HudMode = HudMode,
+        HudOpacity = HudOpacity,
+        ShowSpellPointsBar = ShowSpellPointsBar,
+        QuickRespikeEnabled = QuickRespikeEnabled,
+        QuickRespikeBar = QuickRespikeBar,
+        QuickRespikeSlot = QuickRespikeSlot,
+        EffectMappings = new(EffectMappings)
+    };
+
     public void Validate()
     {
         if (!double.IsFinite(WarningSeconds)) WarningSeconds = 2;
@@ -26,6 +57,11 @@ internal sealed class Settings
         RespikeAlertSeconds = Math.Clamp(RespikeAlertSeconds, 0, 60);
         HudX = double.IsFinite(HudX) ? Math.Clamp(HudX, 0, 1) : .5;
         HudY = double.IsFinite(HudY) ? Math.Clamp(HudY, 0, 1) : .72;
+        if (!Enum.IsDefined(Theme)) Theme = UiTheme.EberronGold;
+        if (!Enum.IsDefined(HudMode)) HudMode = HudDisplayMode.CompactPill;
+        HudOpacity = double.IsFinite(HudOpacity) ? Math.Clamp(HudOpacity, 0.25, 1.0) : 0.90;
+        QuickRespikeBar = Math.Clamp(QuickRespikeBar, 0, 20);
+        QuickRespikeSlot = Math.Clamp(QuickRespikeSlot, 0, 10);
         EffectMappings ??= new();
         foreach (var value in EffectMappings.Values)
             if (!Enum.IsDefined(value)) throw new InvalidDataException("Invalid reaction mapping");

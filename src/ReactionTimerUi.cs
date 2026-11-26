@@ -49,30 +49,55 @@ internal sealed class ReactionTimerUi : IPluginUI, IDisposable
 internal sealed class ControlForm : Form
 {
     private readonly ReactionTimerPlugin _plugin;
-    private readonly Label _status = new() { AutoSize = false, Dock = DockStyle.Fill };
+    private readonly TableLayoutPanel _layout;
+    private readonly TableLayoutPanel _buttons;
+    private readonly Button _preview = new() { Text = "Preview", AutoSize = true };
+    private readonly Button _move = new() { Text = "Move (20s)", AutoSize = true };
     private readonly Button _toggle = new() { Text = "Hide timer", AutoSize = true };
+    private readonly Button _settings = new() { Text = "Settings / effects", AutoSize = true };
+    private readonly Label _status = new() { AutoSize = false, Dock = DockStyle.Fill };
+    private readonly Label _legend = new() { Dock = DockStyle.Fill, AutoSize = true, Margin = new Padding(3, 0, 3, 4),
+        Text = "▲ PYR → Ceruleite   ◆ ORC → Gildleaf   ✚ VRD → Crimsonite" };
+    private readonly Label _hint = new() { Dock = DockStyle.Fill, AutoSize = true, Margin = new Padding(3, 0, 3, 2),
+        Text = "Close this panel while playing; timer stays on." };
     private readonly System.Windows.Forms.Timer _refresh = new() { Interval = 500 };
+    private UiTheme? _appliedTheme;
+
     public ControlForm(ReactionTimerPlugin plugin)
     {
         _plugin = plugin;
         Text = "Reaction Timer controls"; FormBorderStyle = FormBorderStyle.None;
         AutoScaleDimensions = new SizeF(96, 96); AutoScaleMode = AutoScaleMode.Dpi;
-        Size = new Size(360, 190); MinimumSize = new Size(360, 170);
+        Size = new Size(360, 195); MinimumSize = new Size(360, 170);
         AutoScroll = true;
-        BackColor = Color.FromArgb(24, 28, 36); ForeColor = Color.White;
-        var layout = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, RowCount = 3, ColumnCount = 1, Padding = new Padding(6) };
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (int row = 0; row < 3; row++) layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        var buttons = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, RowCount = 2 };
-        buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        buttons.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        buttons.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        var preview = new Button { Text = "Preview", AutoSize = true };
-        var move = new Button { Text = "Move (20s)", AutoSize = true };
-        var settings = new Button { Text = "Settings / effects", AutoSize = true };
-        preview.Click += (_, _) => _plugin.Hud?.Preview();
-        move.Click += (_, _) => _plugin.Hud?.Move();
+
+        _layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            RowCount = 4,
+            ColumnCount = 1,
+            Padding = new Padding(6)
+        };
+        _layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        for (int row = 0; row < 4; row++) _layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+        _buttons = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            ColumnCount = 2,
+            RowCount = 2,
+            Padding = new Padding(4)
+        };
+        _buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        _buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        _buttons.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        _buttons.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+        _preview.Click += (_, _) => _plugin.Hud?.Preview();
+        _move.Click += (_, _) => _plugin.Hud?.Move();
         _toggle.Click += (_, _) =>
         {
             try
@@ -83,18 +108,25 @@ internal sealed class ControlForm : Form
             }
             catch (Exception e) { _status.Text = "Could not save: " + e.Message; }
         };
-        settings.Click += (_, _) =>
+        _settings.Click += (_, _) =>
         {
             if (_plugin.Engine is not { } engine) return;
-            using var dialog = new SettingsDialog(engine); dialog.ShowDialog(this);
+            using var dialog = new SettingsDialog(engine);
+            dialog.ShowDialog(this);
+            RefreshStatus();
         };
-        foreach (var button in new[] { preview, move, _toggle, settings }) button.Dock = DockStyle.Fill;
-        buttons.Controls.Add(preview, 0, 0); buttons.Controls.Add(move, 1, 0);
-        buttons.Controls.Add(_toggle, 0, 1); buttons.Controls.Add(settings, 1, 1);
-        _status.AutoSize = true; _status.Margin = new Padding(3, 8, 3, 8);
-        layout.Controls.Add(buttons, 0, 0); layout.Controls.Add(_status, 0, 1);
-        layout.Controls.Add(new Label { Dock = DockStyle.Fill, AutoSize = true, Text = "Close this panel while playing; timer stays on." }, 0, 2);
-        Controls.Add(layout);
+
+        foreach (var button in new[] { _preview, _move, _toggle, _settings }) button.Dock = DockStyle.Fill;
+        _buttons.Controls.Add(_preview, 0, 0); _buttons.Controls.Add(_move, 1, 0);
+        _buttons.Controls.Add(_toggle, 0, 1); _buttons.Controls.Add(_settings, 1, 1);
+        _status.AutoSize = true; _status.Margin = new Padding(3, 8, 3, 4);
+        _layout.Controls.Add(_buttons, 0, 0);
+        _layout.Controls.Add(_status, 0, 1);
+        _layout.Controls.Add(_legend, 0, 2);
+        _layout.Controls.Add(_hint, 0, 3);
+        Controls.Add(_layout);
+
+        ApplyTheme(UiTheme.EberronGold);
         _refresh.Tick += (_, _) => RefreshStatus();
         VisibleChanged += (_, _) =>
         {
@@ -103,6 +135,46 @@ internal sealed class ControlForm : Form
         };
         RefreshStatus();
     }
+
+    private void ApplyTheme(UiTheme theme)
+    {
+        if (_appliedTheme == theme) return;
+        _appliedTheme = theme;
+        var p = UiThemePalettes.Get(theme);
+        Color canvas = ToColor(p.SurfaceLowest);
+        Color card = ToColor(p.SurfaceLow);
+        Color btnBg = ToColor(p.Surface);
+        Color btnHover = ToColor(p.SurfaceHigh);
+        Color outline = ToColor(p.Outline);
+        Color primary = ToColor(p.Primary);
+        Color text = ToColor(p.OnSurface);
+        Color muted = ToColor(p.OnSurfaceVariant);
+
+        BackColor = canvas; ForeColor = text;
+        _layout.BackColor = canvas;
+        _buttons.BackColor = card;
+        _status.ForeColor = text;
+        _legend.ForeColor = primary;
+        _hint.ForeColor = muted;
+        StyleButton(_preview, btnBg, btnHover, outline, text);
+        StyleButton(_move, btnBg, btnHover, outline, text);
+        StyleButton(_toggle, btnBg, btnHover, outline, text);
+        StyleButton(_settings, btnBg, btnHover, primary, text);
+    }
+
+    private static void StyleButton(Button button, Color bg, Color hover, Color border, Color text)
+    {
+        button.FlatStyle = FlatStyle.Flat;
+        button.BackColor = bg;
+        button.ForeColor = text;
+        button.FlatAppearance.BorderColor = border;
+        button.FlatAppearance.BorderSize = 1;
+        button.FlatAppearance.MouseOverBackColor = hover;
+        button.Margin = new Padding(3);
+    }
+
+    private static Color ToColor(ThemeRgb c) => Color.FromArgb(c.R, c.G, c.B);
+
     // DH calls Show() before using this form's Size to resize its host. Its
     // toolbar can be wider than the plugin panel, so preserve that width before
     // the host measures us. Use public control geometry, not host private fields.
@@ -132,8 +204,10 @@ internal sealed class ControlForm : Form
     }
     private void RefreshStatus()
     {
+        var s = _plugin.Engine?.GetSettings();
+        if (s is not null) ApplyTheme(s.Theme);
         _status.Text = _plugin.Hud?.Status ?? "Waiting for game connection";
-        _toggle.Text = _plugin.Engine?.GetSettings().HudEnabled == false ? "Show timer" : "Hide timer";
+        _toggle.Text = s?.HudEnabled == false ? "Show timer" : "Hide timer";
     }
     protected override void Dispose(bool disposing)
     {

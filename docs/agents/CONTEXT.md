@@ -4,21 +4,12 @@ Human counterpart: [Background](../human/BACKGROUND.md). Repository instructions
 
 ## Required outcome
 
-Maintain a DH-only, compact, transparent DDO Alchemist Reaction Spike HUD that can coexist with Lossless Scaling. Preserve exact pixel font settings, efficient drawing/state handling, movable click-through display and runtime-only installation packaging. Do not add RTSS or a separate runtime executable as a routine refactor.
+Maintain a DH-only, compact, transparent DDO Alchemist Reaction Spike HUD across **DH 4 (`4.2.1.0`)** and **DH 5 Beta (`5.3.0.0`)** without RTSS or separate timer executables. Preserve exact pixel font settings (`10–160`), `ContractSnapshot.cs` `compatibility.*` stability (`v1.1.0` minor bump), runtime-only installation ZIPs, and strict private-key hygiene (`*.key` / `*.pfx` never committed or packaged).
 
 ## Historical evidence to retain
 
-- Earlier SDK 4.3.4 dependency failed to load against the user's DH installation. Rebuild against the verified 4.2.1 assembly solved loading by manual replacement.
-- The ordinary DH panel vanished under WGC and duplicated under DXGI. The current independent HWND is an intentional response, not accidental complexity.
-- Old percentage size input caused unacceptable changes; 20/30 pixel persistence now has regression checks. Only the old 60 minimum explains the 30→60 report; do not claim all original symptoms were reproduced.
-- User confirmed that removing all non-plugin files from the ZIP made installation work. Keep exactly the three runtime entries even if DH's first-entry parser appears to accept more.
-- User reported the independent HUD seemed to work well. A supplied screenshot showed the control panel cutting off toolbar icons and part of the Settings button. The fix measures toolbar width and replaces fixed button-row heights; live confirmation of that correction remains pending.
-- The 1.0.0 repository adds CI and future semantic versions; it does not mean a public 1.0.0 GitHub release has already been published.
-
-## Evidence ledger at handoff
-
-Executed on 2026-09-27: SDK 10.0.401 solution builds on Windows and Ubuntu 22.04 WSL against SDK 4.2.1.0; 44 pure C# and 23 Python checks on both; Visual Studio MSBuild; Debug/Release archive/output checks; Windows synthetic layout smoke loading the 1.0.0 Release ZIP; both pinned installer acquisition scripts; actionlint 1.7.12 workflow validation; source-archive validation. Not executed here: GitHub-hosted Actions and publication, full live DDO/LS matrix. Update this ledger only from actual results, with environment and version.
-
-No live canonical Alchemist DIDs were established. Use names plus explicit user mappings; do not invent IDs. Do not conflate DH Crowd Source Collector with the local game-data provider. Keep runtime telemetry absent unless a future task explicitly designs it.
-
-2026-09-30 re-spike alert update: user requested doubled text and a flashing black background for a configurable duration. Implemented a 5-second default, integer 0–60 seconds, 0 disabled. Release solution builds pass on Windows and Ubuntu WSL with zero warnings/errors; 68 pure checks pass on each. Windows smoke verifies the duration control at minimum dialog size, saved duration/exact font pixels, and native bitmap size/black/transparency restoration. Existing settings dialog button rows were made autosizing after this smoke exposed clipping. Installer validation passes. New observed contracts classify as minor against the prior local snapshot; no version stamp was changed, and the actual release baseline remains CI's responsibility. Live DDO/LS and hosted CI remain unverified for this feature.
+- Earlier SDK 4.3.4 dependency failed against DH 4 (`4.2.1.0`). Pin both DH 4 (`4.2.1.0`) and DH 5 (`5.3.0.0`) in `ci/sdk-lock.json` by SHA-256.
+- DH 4 panel vanished under WGC and duplicated under DXGI -> independent click-through HWND with `WDA_EXCLUDEFROMCAPTURE`. DH 5 Beta renders in-frame via `ImGuiNET` inside DX10/11 (`Microsoft.NETCore.App 10.0.0` only; no WinForms/WPF).
+- Single universal plugin ZIP is empirically impossible across DH 4 vs DH 5 Beta (`IDdoPlugin`/`IPluginUI` removed in `VoK.Sdk 5.3.0`, `IActiveEffect.Expiration`, `IReadOnlyList<IProperty>`, archive-root layout + mandatory `PluginTrustGate`). Ship dual runtime ZIPs (`*-dh4-plugin.zip` and signed `*-dh5-plugin.zip`).
+- Orphan git tag `v1.0.1` has no GitHub Release assets -> `build.yml` + `ci/version.py --tag-floor` resolves the latest released `contracts.json` (`v1.0.0`) while bumping above the highest merged tag (`v1.0.1` -> `1.1.0`).
+- Update evidence ledgers strictly from executed commands with exact counts and environments; never claim compilation or smoke tests prove live DDO/LS/Wine gameplay.

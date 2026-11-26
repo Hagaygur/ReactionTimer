@@ -31,13 +31,13 @@
   </UsingTask>
   <Target Name="PackageReactionTimer" AfterTargets="Build" Condition="'$(DesignTimeBuild)' != 'true'">
     <PropertyGroup>
-      <PluginArchive>$(TargetDir)ReactionTimer-$(Version)-plugin.zip</PluginArchive>
+      <PluginArchive>$(TargetDir)ReactionTimer-$(Version)-dh4-plugin.zip</PluginArchive>
     </PropertyGroup>
     <CreateReactionTimerInstaller OutputDirectory="$(TargetDir)" ArchivePath="$(PluginArchive)" />
     <ItemGroup>
       <FileWrites Include="$(PluginArchive)" />
       <!-- Remove only this project's known products, never arbitrary output files. -->
-      <_OldPluginArchives Include="$(TargetDir)ReactionTimer-*-plugin.zip" Exclude="$(PluginArchive)" />
+      <_OldPluginArchives Include="$(TargetDir)ReactionTimer-*-dh4-plugin.zip;$(TargetDir)ReactionTimer-*-plugin.zip" Exclude="$(PluginArchive)" />
       <_LoosePluginOutputs Include="$(TargetPath);$(TargetDir)$(TargetName).deps.json;$(TargetDir)$(TargetName).metadata;$(TargetDir)$(TargetName).pdb" Condition="'$(Configuration)' == 'Release'" />
     </ItemGroup>
     <Delete Files="@(_OldPluginArchives);@(_LoosePluginOutputs)" />
@@ -45,7 +45,7 @@
   </Target>
   <Target Name="CleanReactionTimerInstaller" AfterTargets="CoreClean">
     <ItemGroup>
-      <_PluginArchivesToClean Include="$(TargetDir)ReactionTimer-*-plugin.zip;$(TargetDir)ReactionTimer-*-plugin.zip.tmp" />
+      <_PluginArchivesToClean Include="$(TargetDir)ReactionTimer-*-dh4-plugin.zip;$(TargetDir)ReactionTimer-*-dh4-plugin.zip.tmp;$(TargetDir)ReactionTimer-*-plugin.zip;$(TargetDir)ReactionTimer-*-plugin.zip.tmp" />
     </ItemGroup>
     <Delete Files="@(_PluginArchivesToClean)" />
   </Target>

@@ -1,96 +1,126 @@
-# Documentation map
+# Alchemist Reaction Timer
 
-The project has two documentation tracks. Human guides explain how and why the system works. Agent guides turn the same project knowledge into working instructions, file pointers and checks. Both describe the same code and must be maintained together.
-
-| Topic | For humans | For AI coding agents |
-| --- | --- | --- |
-| Goals, constraints, development history and evidence | [Background](human/BACKGROUND.md) | [Context](agents/CONTEXT.md) |
-| Code organization, state, threading and drawing | [Architecture](human/ARCHITECTURE.md) | [Code map](agents/CODE.md) |
-| Visual Studio, VS Code and debugging | [Development](human/DEVELOPMENT.md) | [Development instructions](agents/DEVELOPMENT.md) |
-| Installation, troubleshooting, testing and releases | [Operations](human/OPERATIONS.md) | [Workflow](agents/WORKFLOW.md) |
-| Dungeon Helper, SDK, Crowd Source Collector and API sources | [References](human/REFERENCES.md) | [Research guidance](agents/REFERENCES.md) |
-
-Start at [README.md](../README.md) to use the plugin, [GITHUB.md](../GITHUB.md) to set up CI, or [AGENTS.md](../AGENTS.md) to brief an agent. `AGENTS.md` is ordinary Markdown in a recognized open agent-instruction format; discovery varies by tool. If an assistant does not load it automatically, explicitly ask it to read the file and follow its linked guides.
-
-Documentation baseline: **2026-09-27**, source version 1.0.0. This date records documentation preparation, not proof that a GitHub release or live integration test has run.
-
-# Alchemist Reaction Timer 1.0.0
-
-A Dungeon Helper plugin for DDO's Alchemist Reaction Spikes. Runs entirely inside Dungeon Helper; no external timer application or separate service. The installer ZIP contains only the three runtime plugin files. Full source and executable logic tests are delivered separately in DDO-Reaction-Timer-source.zip.
+A Dungeon Helper plugin for **Dungeons & Dragons Online (DDO)** Alchemist Reaction Spikes. Runs inside Dungeon Helper with no RTSS or external timer executable, supporting both **Dungeon Helper 4** (`VoK.Sdk 4.2.1.0`, `.NET 8 Windows`) and **Dungeon Helper 5 Beta** (`VoK.Sdk 5.3.0.0`, `.NET 10 x64` in-game `ImGuiNET` overlay).
 
 ## Developer documentation
 
-Open **ReactionTimer.sln** in Visual Studio, or the repository folder in VS Code. Start with the [documentation map](docs/README.md), [IDE setup](docs/human/DEVELOPMENT.md), or [AGENTS.md](AGENTS.md) for AI coding assistants. Human and agent guides cover matching topics, including DH and Crowd Source Collector references.
+Open **ReactionTimer.sln** in Visual Studio or VS Code. Start with the [documentation map](docs/README.md), [IDE setup](docs/human/DEVELOPMENT.md), [GITHUB.md](GITHUB.md) for CI/signing, or [AGENTS.md](AGENTS.md) for AI coding assistants.
 
-## Automatic builds
+## DDO Alchemist mechanics
 
-See [GITHUB.md](GITHUB.md) for the included GitHub Actions workflow: first stable release 1.0.0, contract-based semantic versions, Windows build checks and separate plugin/source release assets. Upload the repository contents, including `.github`, at your GitHub repository root.
+Alchemists pair three Spell Primers (**Crimsonite**, **Gildleaf**, **Ceruleite**) into persistent Reactions; transitioning into a different Reaction grants a temporary **12-second Reaction Spike**:
 
+| Reaction Spike | Primers | Primary Role & Buff Focus | CVD Glyph & Tag | Next-Primer Hint |
+| --- | --- | --- | --- | --- |
+| **Pyrite** | Crimsonite + Gildleaf | DPS burst: elemental/poison Spellpower, Spell Crit, SP cost reduction | `▲ PYR` (Amber-Gold) | Cast **Ceruleite** |
+| **Orchidium** | Crimsonite + Ceruleite | Survival burst: PRR + MRR / Elemental Resistance | `◆ ORC` (Arcane Violet) | Cast **Gildleaf** |
+| **Verdanite** | Gildleaf + Ceruleite | Healing & CC burst: Positive/Negative Spellpower + Transmutation/Conjuration DCs | `✚ VRD` (Alchemy Emerald) | Cast **Crimsonite** |
 
-## Overlay features
+- **Base-stance next-primer hint:** Tracks your persistent base Reaction (`duration < 0` or `> 30s`) alongside the 12s spike so when a spike expires, the HUD shows which primer breaks your stance to re-spike.
+- **Town & shrine pause suppression:** In taverns/airships (`InTown`) or at rest shrines (`IsPaused`), `SuppressAlertsInTown` suppresses `RE-SPIKE` flashing and expiry sound and shows calm `TOWN  PAUSED` / `TOWN  RESTING`.
 
-- **Re-spike visual alert:** when the spike ends, text grows to twice its saved size and a black background flashes once per second. Configure **Re-spike alert (sec)** in Settings: 5 seconds by default, 0–60 seconds, with 0 disabling it. Text stays readable during flashes; a new spike or the timeout restores normal size and transparency. Preview demonstrates it too.
-- **Independent transparent HUD:** the countdown now uses its own top-level, click-through window. Only outlined text is drawn during normal play: no title bar, panel background, progress bar or large empty container.
-- **Lossless Scaling approach:** the HUD requests Windows `WDA_EXCLUDEFROMCAPTURE`, verifies the setting, and stays above the scaling window without activating itself. This is intended to prevent a captured, enlarged duplicate while retaining the original text above LS. It avoids relying on DH's hosted panel being present in WGC's captured image. Actual compatibility needs testing on your Windows/LS setup.
-- **Exact font-size input:** replaces the old 60–180% setting with integer pixels, 10–160. Entering 20 or 30 saves that exact value. Invalid input shows an error instead of silently substituting a size. Old effect mappings are retained; the new font default is 28px.
-- **Directly installable ZIP:** the first archive entry is `plugins/ReactionTimer/VoK.ReactionTimer.dll`. Only the three runtime files are included; there is no nested ZIP or source directory.
-- Changing appearance no longer resets an active timer.
+## Overlay & plugin features
+
+- **Analog depletion bar & calm-to-urgent lifecycle:** Beneath the countdown (`PYRITE  8.4`), an optional 6px smooth depletion bar (`ShowDepletionBar`) marks `WarningSeconds` so remaining spike time can be judged peripherally without reading digits. Approaching `WarningSeconds` transitions smoothly to warning colors; expiry shows **RE-SPIKE** with bounded `<= 2 Hz` flashing for `RespikeAlertSeconds` (default `5`, `0–60`, `0` disables).
+- **3 shared DDO × Material Design 3 themes (`UiTheme`):** Available on both DH 4 and DH 5 (`Theme` setting, or `/alch theme` in DH 5):
+  - `EberronGold` (*Eberron Obsidian & Gold*, default): `#111318`/`#1A1D24`/`#222630`/`#2C313E`, outline `#4A5368`, primary `#E2B75B`, secondary `#56CCF2`.
+  - `CannithArcane` (*House Cannith Arcane Forge*): `#0E141D`/`#151E2B`/`#1D293A`/`#27364B`, outline `#455D7A`, primary `#56CCF2`, secondary `#D4A359`.
+  - `FeywildTwilight` (*Feywild Eldritch Twilight*): `#15111E`/`#1E182B`/`#282039`/`#332949`, outline `#584875`, primary `#CDA4FF`, secondary `#6EE7B7`.
+- **DH 4 overlay (`net8.0-windows`):** Independent top-level, click-through GDI+ DIB window with `WDA_EXCLUDEFROMCAPTURE` (for Lossless Scaling) and `IsWineRuntime` (`ntdll!wine_get_version`) Wine/Proton fallbacks.
+- **DH 5 Beta overlay (`net10.0`, `x64`, `ImGuiNET`):** Renders directly inside DDO's DX10/11 frame (no separate HWND or Lossless Scaling duplication), offering **Compact Pill + Depletion Bar** (`CompactPill`) or **Single-Arc Radial Donut** (`RadialDonut`) via `HudMode`, an Astral Blue Spell Points (`SP`) micro-bar (`ShowSpellPointsBar`), interactive 20s drag/corner-resize/wheel-font/Ctrl+wheel-opacity, `/alch` chat commands, and optional **`InvokeHotbar` Quick Re-Spike** (disabled by default until `QuickRespikeEnabled` and non-zero `QuickRespikeBar`/`QuickRespikeSlot` are configured).
+- **Exact font-size input:** Integer pixels `10–160` (`FontSizePixels`, default `28`). Ordinary appearance changes do not reset active timers.
 
 ## Install or update
 
-1. Close DDO. In Dungeon Helper, choose **Settings → Add plugin from zip file** and select **DDO-Reaction-Timer-DH-only.zip directly**.
-2. If prompted because ReactionTimer already exists, choose **Yes** to overwrite.
+Choose the release archive matching your Dungeon Helper version (**never** install `ReactionTimer-X.Y.Z-source.zip` into Dungeon Helper):
+
+### Option A: Dungeon Helper 4 (`4.2.1.0`)
+
+1. Close DDO. In Dungeon Helper 4, choose **Settings → Add plugin from zip file** and select **`ReactionTimer-X.Y.Z-dh4-plugin.zip`**.
+2. If prompted because `ReactionTimer` already exists, choose **Yes** to overwrite.
 3. Fully exit DH from its tray icon, restart it, then launch DDO.
-4. Click the amber stopwatch icon. The plugin is version **1.0.0.0**.
+4. Click the amber stopwatch icon. Only `plugins/ReactionTimer/VoK.ReactionTimer.{dll,deps.json,metadata}` are in this ZIP.
 
-If DH refuses the update or a file is locked, fully close DDO and DH first. Extract the ZIP and copy the contents of `plugins/ReactionTimer` into the existing `%APPDATA%\Dungeon Helper\plugins\ReactionTimer\` folder (or your actual installation path), replacing files. If an older package installed a `source` subfolder inside ReactionTimer, remove that subfolder while DH is closed. Keep existing settings and logs. Do not leave another copy of the plugin DLL in a second plugin folder.
+If DH 4 refuses the update or a file is locked, fully close DDO and DH, extract the ZIP, and copy the contents of `plugins/ReactionTimer` into `%APPDATA%\Dungeon Helper\plugins\ReactionTimer\` while preserving your settings and logs.
 
-The plugin is compiled against **VoK.Sdk 4.2.1.0**, matching the SDK from the public DH installer used to diagnose your earlier load failure. No SDK DLL or .NET runtime is redistributed. Do not replace DH's own SDK.
+### Option B: Dungeon Helper 5 Beta (`5.3.0.0`, `x64`)
 
-## Configure and play
+1. Close DDO. In Dungeon Helper 5 Beta, open **Plugins → Install from zip** and select **`ReactionTimer-X.Y.Z-dh5-plugin.zip`**.
+2. The archive is Authenticode- and manifest-signed for plugin **`Alch Reaction Timer`** (`fc0b3f68-e30d-4d1f-b2ac-4e5d62bb1725`, community entitlement by `Warned`) with all 8 canonical files at archive root.
+3. Launch DDO in **DX10 or DX11** (`x64`). Settings are saved under `%LocalAppData%\DungeonHelperData\plugins\Alch Reaction Timer\reaction-timer.json`.
 
-Open the stopwatch control panel and click **Settings / effects** to set **Font size (px)**; try 20 or 30. Click **Preview** for a marked 12-second demonstration followed by RE-SPIKE. **Move (20s)** temporarily enables dragging and shows a small translucent drag plate. After 20 seconds, the plate disappears and the HUD becomes click-through again. Position is saved relative to the game monitor.
+## Configure, play & DH 5 `/alch` commands
 
-Close the DH control panel while playing: the HUD remains active. The control panel is only for configuration. **Hide timer / Show timer** toggles the HUD; Preview and Move temporarily show it even when hidden. The HUD normally appears while DDO, DH or Lossless Scaling has focus and hides on unrelated applications or logout. The default sound is off.
+- **DH 4:** Open the stopwatch control panel (`Settings / effects`) to set `FontSizePixels`, `WarningSeconds`, `RespikeAlertSeconds`, `Theme`, `SuppressAlertsInTown`, `ShowDepletionBar`, or DID overrides. Use **Preview** (12s countdown + RE-SPIKE) and **Move (20s)** (click-through restores automatically after 20s).
+- **DH 5 Beta:** Click the toolbar icon to toggle the Material-tabbed config window (`HUD | Spikes | Quick-Cast | Diagnostics`), or use in-game `/alch` chat commands:
+  - `/alch status` — prints current spike, persistent base stance/next primer, and Spell Points.
+  - `/alch warn <0-10>` — sets `WarningSeconds`.
+  - `/alch hud [on|off|pill|donut]` — toggles HUD visibility or switches between `CompactPill` and `RadialDonut`.
+  - `/alch town [on|off]` — toggles `SuppressAlertsInTown`.
+  - `/alch theme <eberron|cannith|feywild>` — switches `Theme` live across `EberronGold`, `CannithArcane`, and `FeywildTwilight`.
+  - `/alch respike` — triggers the configured `InvokeHotbar` Quick Re-Spike slot (refuses safely while `QuickRespikeEnabled` is off or bar/slot are `0`).
+  - `/alch reset` — resets `HudX` (`0.5`), `HudY` (`0.72`), `FontSizePixels` (`28`), and `HudOpacity` (`0.90`).
 
-The timer shows Pyrite in orange, Orchidium in purple and Verdanite in green. It turns red near expiry and shows **RE-SPIKE** at expiry/removal. Paused effects show **PAUSED**. Unknown remaining time shows **ACTIVE**; estimated times are marked `~`. The timer handles effect refreshes, pauses, character changes and overlapping effects.
+### Settings reference (`reaction-timer.json`)
 
-## Lossless Scaling check
-
-With LS off, click Preview and confirm the transparent text is visible. Check the control-panel status for **Capture exclusion: ON**. Then test Preview with LS on, separately in WGC and DXGI, closing the control panel during each check. The intended result is one unscaled copy of the text.
-
-Windows accepting the capture-exclusion setting does not prove LS honors it. If it still disappears or duplicates, provide the status text, LS version and capture mode, and whether the preview works with LS off. If status reports failure, include the Windows error number. The `0x11` exclusion mode requires Windows 10 version 2004 or newer. Other Dungeon Helper panels and toolbars are not changed and can still exhibit their original capture behavior.
+| Property | Type | Default | Range / Notes |
+| --- | --- | --- | --- |
+| `WarningSeconds` | `double` | `2` | `0–10` seconds before expiry for warning color |
+| `SoundOnExpiry` | `bool` | `false` | Optional chime on expiry (suppressed in town/shrine pause when `SuppressAlertsInTown` is true) |
+| `RespikeAlertSeconds` | `int` | `5` | `0–60` seconds for enlarged RE-SPIKE alert (`0` disables) |
+| `FontSizePixels` | `int` | `28` | `10–160` exact integer pixels |
+| `HudEnabled` | `bool` | `true` | Enables/disables the gameplay HUD (`Preview` and `Move` still show temporarily) |
+| `HudX` | `double` | `0.5` | `0–1` normalized horizontal anchor |
+| `HudY` | `double` | `0.72` | `0–1` normalized vertical anchor |
+| `SuppressAlertsInTown` | `bool` | `true` | Suppresses `RE-SPIKE` flash/sound in taverns/airships and paused shrines |
+| `ShowDepletionBar` | `bool` | `true` | Draws the 6px peripheral analog depletion bar + warning tick mark |
+| `Theme` | `UiTheme` | `EberronGold` | `EberronGold`, `CannithArcane`, or `FeywildTwilight` |
+| `HudMode` | `HudDisplayMode` | `CompactPill` | `CompactPill` or `RadialDonut` (DH 5 ImGui HUD layout) |
+| `HudOpacity` | `double` | `0.90` | `0.25–1.00` DH 5 HUD backdrop/card opacity |
+| `ShowSpellPointsBar` | `bool` | `true` | Shows Astral Blue Spell Points micro-bar under DH 5 HUD |
+| `QuickRespikeEnabled` | `bool` | `false` | Gates DH 5 `InvokeHotbar` Quick Re-Spike (off by default for safety) |
+| `QuickRespikeBar` | `int` | `0` | `0–20` hotbar index (`0` = unset) |
+| `QuickRespikeSlot` | `int` | `0` | `0–10` slot index (`0` = unset) |
+| `EffectMappings` | `Dictionary<int, Reaction>` | `{}` | Explicit effect DID overrides (`Pyrite`, `Orchidium`, `Verdanite`) |
 
 ## If a real spike is not recognized
 
-Automatic detection requires “spike” plus “reaction”, “Pyrite”, “Orchidium” or “Verdanite” in the effect name; permanent and long-lived effects are excluded. Exact effect identifiers have not been captured from a live game for this build.
+Automatic detection requires `"spike"` plus `"reaction"`, `"Pyrite"`, `"Orchidium"`, or `"Verdanite"` in the effect name; permanent and long-lived effects (`> 30s`) are excluded from spike tracking (persistent reactions are tracked separately for next-primer hints).
 
-In **Settings / effects**, trigger a spike, click **Refresh**, select its temporary effect, choose its reaction, click **Track selected**, then **Save**. Recently seen effects remain listed for 60 seconds. Select the temporary spike, not the permanent reaction. **Clear override** restores automatic detection for that definition.
+In **Settings / effects**, trigger a spike, click **Refresh**, select the temporary effect, choose its reaction, click **Track selected**, then **Save**. **Export diagnostics** writes effect names, IDs, durations, and settings to `reaction-timer-effects.json` in the plugin data directory. The plugin makes no network requests and sends no game inputs unless you explicitly trigger DH 5 Quick Re-Spike.
 
-**Export diagnostics** writes effect names, IDs, durations and settings to `reaction-timer-effects.json` in the plugin data directory and shows its path. The plugin makes no network requests and sends no game inputs.
+## Lossless Scaling & platform status
 
-## Verification and limits
+- **Windows 11:** Verified locally with .NET 10 SDK compilation, C# behavioral checks, DH 4 `WindowsSmoke`, DH 5 `Dh5Smoke`, and real DH 5.0.858 `PluginTrustGate` / `InstallFromZip` verification. On DH 4 with Lossless Scaling, confirm `Capture exclusion: ON` and test Preview in WGC and DXGI with the configuration panel closed (Windows accepting `WDA_EXCLUDEFROMCAPTURE` `0x11` is not proof that every LS backend honors it). On DH 5 Beta, ImGui renders inside DDO's DX10/11 frame with no separate HWND.
+- **Linux / Wine / Proton:** Solution builds (`Debug` + `Release`), portable C# checks, Python policy/SDK/signing checks, and `Dh5Smoke` cross-compile and execute on Ubuntu in GitHub Actions CI. `IsWineRuntime` (`ntdll!wine_get_version`) guards DH 4 capture exclusion (`WDA_EXCLUDEFROMCAPTURE`) and foreground checks on Wine/Proton; live Linux/Wine DDO gameplay has not been tested.
 
-- Compiled with warnings treated as errors against SDK 4.2.1.0 and .NET 8 Windows Desktop references.
-- **44 executable checks passed**, including timer state, detection filters, exact 20/30 font save/reopen, invalid input rejection, migration of old settings and monitor position calculations.
-- Passed assembly type discovery, public plugin construction and UI contract creation using the actual SDK and Windows managed assemblies from DH's public installer.
-- Installer ZIP checked for exactly the three runtime entries, valid CRCs and byte-identical DLL after extraction.
-- SDK 10.0.401 solution builds pass on Windows and Ubuntu WSL, including Debug/Release packaging. Visual Studio MSBuild and the synthetic Windows toolbar/button layout smoke test pass. All 44 C# and 23 Python checks pass on both operating systems.
+## Implementation, research basis & rebuilding
 
-## Implementation and rebuilding
+Thin SDK callbacks enqueue work onto non-blocking engines (`TimerEngine` on DH 4 with 10 Hz worker + STA GDI+ DIB `HudWindow`; async `Dh5TimerEngine` on DH 5 using `InTownAsync()`, `GetCurrentCharacterAsync()`, `IActiveEffect.Expiration`, `IReadOnlyList<IProperty>`, and `ImGuiNET` dynamic font sizing).
 
-Thin SDK callbacks enqueue events. A non-overlapping worker updates timer state at 10 Hz and reconciles active effects every second. The HUD has a dedicated STA message loop, reads immutable snapshots and renders only changed text/settings while visible. It reuses a premultiplied-alpha DIB surface until dimensions change and disposes native drawing resources on shutdown. Settings use atomic replacement; position saves are debounced. SDK handlers become inert after teardown because this SDK has no handler unregistration API.
+### Design & academic HCI references
 
-Extract the separate **DDO-Reaction-Timer-source.zip** and open the extracted repository root. On Windows with the .NET 10 SDK:
+- **Glanceable analog progress & prospective memory offloading:** Myers (1985, [CHI '85](https://doi.org/10.1145/317456.317459)); Risko & Gilbert (2016, [TiCS](https://doi.org/10.1016/j.tics.2016.07.002)); Blascheck et al. (2019, [IEEE TVCG](https://doi.org/10.1109/TVCG.2018.2865142) — single-arc donut `<220 ms` and horizontal bar `<300 ms`, avoiding multi-ring radial gauges).
+- **Calm peripheral displays & bounded alarm urgency:** Weiser & Brown (1997, [Springer](https://doi.org/10.1007/978-1-4612-0685-9_6)); Matthews et al. (2004, [UIST '04](https://doi.org/10.1145/1029632.1029676); 2007, [HCI](https://doi.org/10.1080/07370020701307997)); Edworthy, Loxley & Dennis (1991, [Human Factors](https://doi.org/10.1177/001872089103300206)); Edworthy & Hellier (2006, [BJA](https://doi.org/10.1093/bja/ael114)); Sweetser & Wyeth (2005, [GameFlow](https://doi.org/10.1145/1077246.1077253)); Desurvire & Wiberg (2009, [PLAY](https://doi.org/10.1007/978-3-642-02774-1_60)).
+- **Colorblind-safe encoding & Material Dark hierarchy:** Okabe & Ito (2008, [CUD](https://jfly.uni-koeln.de/color/)); W3C WCAG 2.2 ([2.3.1 Three Flashes `<=3 Hz`](https://www.w3.org/WAI/WCAG22/Understanding/three-flashes-or-below-threshold.html), [2.5.8 Target Size](https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html)); Google Material Design 3 ([Dark Tonal Elevation](https://m3.material.io/styles/elevation/overview)).
+
+### Rebuilding from source
+
+Extract `ReactionTimer-X.Y.Z-source.zip` and run from the repository root (with .NET 10 SDK, Python 3, OpenSSL/SignTool, and pinned SDKs):
 
 ```powershell
-.\build.ps1
-# For a nonstandard installation:
-.\build.ps1 -DungeonHelperDir 'D:\Apps\Dungeon Helper'
+./ci/Get-Sdk.ps1
+./build.ps1 -DungeonHelperDir $env:DH_SDK_DIR -Dh5SdkDir $env:DH5_SDK_DIR -Version 1.1.0 -AllowUnsigned
+# Signed DH 5 bundle (supply your author key path via -KeyFile or DH_AUTHOR_KEY_FILE/DH_AUTHOR_KEY_B64):
+./build.ps1 -DungeonHelperDir $env:DH_SDK_DIR -Dh5SdkDir $env:DH5_SDK_DIR -Version 1.1.0 -KeyFile C:\path\to\author.key
 ```
 
-Normal Visual Studio and `dotnet build` builds create the installer with the DLL first. Release leaves only the ZIP in `src/bin/Release/net8.0-windows/`; Debug retains the DLL, deps.json, metadata and PDB alongside the ZIP in `src/bin/Debug/net8.0-windows/`. The script additionally runs the logic checks and copies the Release ZIP to `dist/ReactionTimer-1.0.0-plugin.zip`. It does not install automatically. See [Linux cross-compilation](docs/human/DEVELOPMENT.md#linux-cross-compilation) for Linux builds; the plugin still runs only on Windows.
+## Release history
 
-References: [SetWindowDisplayAffinity](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowdisplayaffinity), [extended window styles](https://learn.microsoft.com/en-us/windows/win32/winmsg/extended-window-styles), [Dungeon Helper](https://dungeonhelper.com/).
+- **`v1.1.0`** — Dual **Dungeon Helper 4** (`ReactionTimer-1.1.0-dh4-plugin.zip`, `net8.0-windows`, `VoK.Sdk 4.2.1.0`) + **Dungeon Helper 5 Beta** (`ReactionTimer-1.1.0-dh5-plugin.zip`, `net10.0` `x64`, `VoK.Sdk 5.3.0.0`, community-entitlement & Authenticode signed, in-frame `ImGuiNET` Compact Pill / Radial Donut HUD, SP micro-bar, `/alch` commands, optional `InvokeHotbar` Quick Re-Spike); 3 shared DDO × Material Design 3 themes (`EberronGold`, `CannithArcane`, `FeywildTwilight`); `SuppressAlertsInTown`, `ShowDepletionBar`, base-stance next-primer hints, `IsWineRuntime` Wine/Proton fallbacks, `Dh5Smoke`, and orphan-tag CI fix (`--tag-floor`).
+- **`v1.0.1`** *(git tag only; no GitHub Release assets published)* — README documentation update.
+- **`v1.0.0`** — Initial stable DH 4 release with independent transparent click-through HUD, exact `10–160px` integer font input, `WDA_EXCLUDEFROMCAPTURE`, and effect DID overrides.
+
+References: [SetWindowDisplayAffinity](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowdisplayaffinity), [extended window styles](https://learn.microsoft.com/en-us/windows/win32/winmsg/extended-window-styles), [Dungeon Helper](https://dungeonhelper.com/), [DH 5 SDK 5.3.0](http://sdk.dungeonhelper.com/5.3.0/).
 
 Unofficial community plugin; not an official Dungeon Helper or Standing Stone Games release.

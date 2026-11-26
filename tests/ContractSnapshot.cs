@@ -23,6 +23,7 @@ internal static class ContractSnapshot
         var expired = new TimerView(TimerMode.Expired, Reaction.Pyrite, 0, 12, false, 1, "");
         var alert = alertState.Update(expired, 0, settings.RespikeAlertSeconds);
         var active = new TimerView(TimerMode.Active, Reaction.Pyrite, 3.5, 12, false, 0, "");
+        var townPaused = new TimerView(TimerMode.Paused, Reaction.Pyrite, 6, 12, false, 0, "Town • paused") { InTown = true };
         var state = new TimerState();
         state.Apply(1, 10, Reaction.Pyrite, 12, 12, false, false, 100, true);
         compatibility["countdown.after-4s"] = state.Read(104).Remaining!;
@@ -35,11 +36,19 @@ internal static class ContractSnapshot
             ["hud.active-text"] = HudPresentation.Text(active, false),
             ["hud.preview-text"] = HudPresentation.Text(active, true),
             ["hud.expired-text"] = HudPresentation.Text(active with { Mode = TimerMode.Expired }, false),
+            ["hud.town-paused-text"] = HudPresentation.Text(townPaused, false),
             ["font.default"] = settings.FontSizePixels,
             ["font.accepts-20"] = SettingsInput.TryFontSize("20", out _),
             ["font.accepts-30"] = SettingsInput.TryFontSize("30", out _),
             ["sound.default"] = settings.SoundOnExpiry,
             ["warning.default"] = settings.WarningSeconds,
+            ["town-suppress.default"] = settings.SuppressAlertsInTown,
+            ["depletion-bar.default"] = settings.ShowDepletionBar,
+            ["base-stance.pyrite-next-primer"] = ReactionMatcher.NextPrimerFor(Reaction.Pyrite)!,
+            ["dh5.hud-mode-default"] = settings.HudMode.ToString(),
+            ["dh5.opacity-default"] = settings.HudOpacity,
+            ["theme.default"] = settings.Theme.ToString(),
+            ["theme.count"] = Enum.GetValues<UiTheme>().Length,
             ["respike-alert.default-seconds"] = settings.RespikeAlertSeconds,
             ["respike-alert.font-size"] = alert.FontSize(settings.FontSizePixels),
             ["respike-alert.starts-black"] = alert.BlackBackground,

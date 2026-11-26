@@ -59,15 +59,29 @@ internal static class Program
             var input = (NumericUpDown)dialog.Controls.Find("RespikeAlertSeconds", true).Single();
             if (!input.Visible || !input.Parent!.ClientRectangle.Contains(input.Bounds) || input.Value != 5)
                 throw new Exception("Respike duration control is clipped or has the wrong default");
+            var townCheck = (CheckBox)dialog.Controls.Find("SuppressAlertsInTown", true).Single();
+            var barCheck = (CheckBox)dialog.Controls.Find("ShowDepletionBar", true).Single();
+            var themeCombo = (ComboBox)dialog.Controls.Find("Theme", true).Single();
+            if (!townCheck.Checked || !barCheck.Checked)
+                throw new Exception("Town suppression and depletion bar checkboxes must default to checked");
+            if (themeCombo.Items.Count != 3 || themeCombo.SelectedIndex != 0 || !themeCombo.Parent!.ClientRectangle.Contains(themeCombo.Bounds))
+                throw new Exception("Theme selector must expose all 3 DDO themes, default to EberronGold, and remain unclipped");
+            // Cycle all 3 themes live on SettingsDialog to confirm zero exceptions and clean layout
+            themeCombo.SelectedIndex = 2; Application.DoEvents();
+            themeCombo.SelectedIndex = 1; Application.DoEvents();
             CheckButtons(dialog);
             input.Value = 17;
+            townCheck.Checked = false;
             Button FindSave(Control parent) => parent.Controls.Cast<Control>()
                 .SelectMany(Descendants).OfType<Button>().Single(button => button.Text == "Save");
             FindSave(dialog).PerformClick();
             using (var saved = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(folder, "reaction-timer.json"))))
                 if (saved.RootElement.GetProperty("RespikeAlertSeconds").GetInt32() != 17 ||
-                    saved.RootElement.GetProperty("FontSizePixels").GetInt32() != 30)
-                    throw new Exception("Settings UI did not preserve duration and exact font pixels");
+                    saved.RootElement.GetProperty("FontSizePixels").GetInt32() != 30 ||
+                    saved.RootElement.GetProperty("SuppressAlertsInTown").GetBoolean() != false ||
+                    saved.RootElement.GetProperty("ShowDepletionBar").GetBoolean() != true ||
+                    saved.RootElement.GetProperty("Theme").GetString() != "CannithArcane")
+                    throw new Exception("Settings UI did not preserve duration, exact font pixels, gameplay flags, and theme");
 
             var hudType = assembly.GetType("VoK.ReactionTimer.HudWindow")!;
             var queue = Activator.CreateInstance(typeof(System.Collections.Concurrent.ConcurrentQueue<>)
@@ -78,25 +92,33 @@ internal static class Program
                 Enum.Parse(assembly.GetType("VoK.ReactionTimer.TimerMode")!, "Expired"),
                 Enum.Parse(assembly.GetType("VoK.ReactionTimer.Reaction")!, "Pyrite"), 0d, 12d, false, 1L, "")!;
             var frameType = assembly.GetType("VoK.ReactionTimer.HudAlertFrame")!;
-            void Render(bool enlarged, bool black) => hudType.GetMethod("Render", fields)!.Invoke(hud,
-                new[] { view, false, 0d, Activator.CreateInstance(frameType, enlarged, black)! });
+            void Render(object targetView, bool enlarged, bool black) => hudType.GetMethod("Render", fields)!.Invoke(hud,
+                new[] { targetView, false, 0d, Activator.CreateInstance(frameType, enlarged, black)! });
             Color Corner()
             {
                 var surface = hudType.GetField("_surface", fields)!.GetValue(hud)!;
                 // Sample inside the plate, outside the text, avoiding its antialiased outer edge.
                 return ((Bitmap)surface.GetType().GetField("_image", fields)!.GetValue(surface)!).GetPixel(1, 1);
             }
-            Render(false, false); int normalHeight = hud.ClientSize.Height;
-            Render(true, true); var enlargedSize = hud.ClientSize;
+            Render(view, false, false); int normalHeight = hud.ClientSize.Height;
+            Render(view, true, true); var enlargedSize = hud.ClientSize;
             if (hud.ClientSize.Height <= normalHeight * 1.5 || Corner().ToArgb() != Color.Black.ToArgb())
                 throw new Exception($"Expiry HUD did not grow and draw opaque black: height {normalHeight} -> {hud.ClientSize.Height}, corner {Corner()}");
-            Render(true, false);
+            Render(view, true, false);
             if (hud.ClientSize != enlargedSize || Corner().A != 0)
                 throw new Exception("Flash off must restore transparency without shrinking the text");
-            Render(false, false);
+            Render(view, false, false);
             if (hud.ClientSize.Height != normalHeight || Corner().A != 0)
                 throw new Exception("Alert end must restore normal size and transparency");
-            Console.WriteLine("PASS respike settings save/layout and native HUD size/black-background/transparency transitions");
+
+            // Also verify active countdown renders depletion bar cleanly while preserving transparent corner
+            var activeView = Activator.CreateInstance(assembly.GetType("VoK.ReactionTimer.TimerView")!,
+                Enum.Parse(assembly.GetType("VoK.ReactionTimer.TimerMode")!, "Active"),
+                Enum.Parse(assembly.GetType("VoK.ReactionTimer.Reaction")!, "Pyrite"), 6.5d, 12d, false, 1L, "")!;
+            Render(activeView, false, false);
+            if (hud.ClientSize.Height <= normalHeight || Corner().A != 0)
+                throw new Exception("Active HUD with depletion bar must expand cleanly and keep transparent corner");
+            Console.WriteLine("PASS respike settings save/layout, depletion bar render, and native HUD size/black-background/transparency transitions");
         }
         finally { Directory.Delete(folder, true); }
     }

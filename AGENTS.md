@@ -4,7 +4,12 @@ This file applies to the entire repository. Read the task-specific documents bel
 
 ## Objective and current baseline
 
-Build a small, transparent Alchemist Reaction Spike HUD for Dungeons & Dragons Online, running inside Dungeon Helper (DH), with no RTSS or separate timer executable. The HUD must remain usable with Lossless Scaling (LS). The stable release baseline is 1.0.0; GitHub Actions chooses later versions. Build with the .NET 10 SDK; the runtime target remains .NET 8 Windows and the pinned **VoK.Sdk 4.2.1.0**, not the newest NuGet package.
+Maintain a compact, transparent DDO Alchemist Reaction Spike HUD running inside Dungeon Helper with no RTSS or separate timer executable, supporting both:
+
+1. **Dungeon Helper 4 (`src/`, `net8.0-windows`)** against pinned **VoK.Sdk 4.2.1.0** (`plugins/ReactionTimer/` 3-file ZIP, independent click-through GDI+ DIB HUD with `WDA_EXCLUDEFROMCAPTURE` for Lossless Scaling and `IsWineRuntime` Wine/Proton fallbacks).
+2. **Dungeon Helper 5 Beta (`src-dh5/`, `net10.0` `x64`)** against pinned **VoK.Sdk 5.3.0.0** (`Alch Reaction Timer`, signed archive-root 8-entry ZIP, in-game `ImGuiNET` overlay, zero `System.Windows.Forms`/`System.Media` refs).
+
+Build with the .NET 10 SDK (`global.json`). Both projects share portable core logic (`TimerState.cs`, `ReactionMatcher.cs`, `Settings.cs`, `HudPresentation.cs`, `UiTheme.cs`) via `<Compile Link>` without duplicating business logic.
 
 ## Read by task
 
@@ -18,26 +23,25 @@ Build a small, transparent Alchemist Reaction Spike HUD for Dungeons & Dragons O
 
 ## Essential constraints
 
-- Installer ZIP: exactly three runtime files under `plugins/ReactionTimer/`, DLL first. Never add documentation, source, tests or SDK DLLs to that ZIP. Put them in the separate source archive.
-- Keep SDK callbacks short. TimerState is pure; SDK state is processed by TimerEngine. Native windows belong to the HUD STA thread.
-- Keep the HUD separate from DH's hosted configuration panel. Retain transparency, click-through behavior and capture exclusion. Do not infer LS success from an accepted Windows API call.
-- Font size is an exact integer pixel value. Saving 20 or 30 must preserve it. Ordinary appearance changes must not reset active effects.
-- Keep the stable plugin ID/key and compatible saved settings unless an intentional migration is part of the task.
-- The timer reads local SDK data. Crowd Source Collector is a separate optional DH component, not this plugin's event provider or a required cloud service. No Collector integration is currently implemented.
-- A failing test blocks release; it does not justify bumping a version or weakening an assertion. Version contracts are observations of passing behavior, not a universal feature detector.
-- Preserve the distinction between user reports, executed tests and untested Windows/LS behavior. Never label compilation as live integration verification.
+- **DH 4 installer ZIP (`ReactionTimer-<ver>-dh4-plugin.zip`):** exactly three runtime files under `plugins/ReactionTimer/`, DLL first. Never add documentation, source, tests, or SDK DLLs.
+- **DH 5 installer ZIP (`ReactionTimer-<ver>-dh5-plugin.zip`):** archive-root canonical entries only (no `plugins/` prefix, no `./`, `\`, PDBs, SDK DLLs, or secrets). Signed releases contain exact 8 entries (`Alch Reaction Timer.entitlement`, `.entitlement.sig`, `.manifest`, `.manifest.sig`, `.pem`, `VoK.ReactionTimer.dll`, `.deps.json`, `plugin.metadata`).
+- **Secret hygiene:** NEVER copy, commit, print, log, or package `*.key` or `*.pfx` files. Only the public entitlement pair (`ci/Alch Reaction Timer.entitlement` and `.sig`) belongs in git. `ci/sign_dh5.py` uses `tempfile.TemporaryDirectory()` cleaned up in `finally:`.
+- **Non-blocking SDK usage:** Keep SDK callbacks short. `TimerState` is pure. On DH 4, native windows belong to the HUD STA thread. On DH 5, never call `.Result`/`.GetAwaiter().GetResult()` inside `ClientFrameStep()`, `ImGui_Render()`, or under locks; run `TickAsync()` asynchronously and override `WindowVisible` with a real backing property (default `false`).
+- **HUD & contract preservation:** Keep `FontSizePixels` exact (`10–160`), `(1,1)` corner pixel behavior in `HudWindow.Render` on `Expired`, `HudPresentation.Text(...)` compatibility strings, and all existing `ContractSnapshot.cs` `compatibility.*` keys so SemVer stays `minor` unless intentionally breaking.
+- **Quick-Cast safety:** Default `QuickRespikeEnabled = false`, `QuickRespikeBar = 0`, `QuickRespikeSlot = 0`. Never auto-cast without explicit user configuration.
+- **Evidence accuracy:** Preserve the distinction between executed unit/smoke/`TrustProbe` tests and untested live DDO/Wine/LS gameplay. Never label compilation or synthetic smoke tests as live DDO integration verification.
 
 ## Commands from repository root
 
 ```powershell
 python -m unittest discover -s ci -p test_*.py -v
 dotnet run --project tests/ReactionTimer.Tests.csproj -c Release -- --contracts dist/contracts.json
-.\build.ps1 -DungeonHelperDir "$env:APPDATA\Dungeon Helper" -Version 1.0.0
-dotnet run --project tests/WindowsSmoke/WindowsSmoke.csproj -c Release -- src/bin/Release/net8.0-windows/ReactionTimer-1.0.0-plugin.zip "$env:APPDATA\Dungeon Helper"
+./ci/Get-Sdk.ps1
+.\build.ps1 -DungeonHelperDir $env:DH_SDK_DIR -Dh5SdkDir $env:DH5_SDK_DIR -Version 1.1.0 -AllowUnsigned
+dotnet run --project tests/WindowsSmoke/WindowsSmoke.csproj -c Release -- "src/bin/Release/net8.0-windows/ReactionTimer-1.1.0-dh4-plugin.zip" "$env:DH_SDK_DIR"
+dotnet run --project tests/Dh5Smoke/Dh5Smoke.csproj -c Release -- "dist/ReactionTimer-1.1.0-dh5-plugin.zip" "$env:DH5_SDK_DIR"
 ```
-
-Run checks relevant to the change. The solution cross-compiles on Linux with the compatible SDK; only smoke execution requires Windows. See the development guide for Linux SDK acquisition. Every plugin build creates the installer: Release leaves only the ZIP in its output directory, while Debug retains DLL, deps, metadata and PDB alongside the ZIP. `build.ps1` modifies assembly/metadata versions in the working tree; inspect these changes before committing.
 
 ## Documentation and completion
 
-Update the human and agent counterpart when behavior, architecture, commands, limitations or verified evidence changes. Keep project facts in agreement; do not blindly copy a claimed test result into both. `ci/package.py` must include `docs/` and `AGENTS.md` in source packages while keeping plugin packages runtime-only. State what changed, what ran, what remains unverified, and the expected version impact in the handoff. Do not introduce environment-specific local paths, user logs or downloaded SDK binaries into the repository.
+Update both human and agent docs plus `README.md` (`Settings` table checked by `ci/test_version.py`) whenever settings, commands, build steps, or verified evidence change. Keep `ci/package.py` covering every tracked file in `git ls-files` while keeping runtime ZIPs strictly minimal.

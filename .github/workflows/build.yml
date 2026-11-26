@@ -31,21 +31,34 @@ jobs:
           python-version: '3.12'
       - name: Test version policy and SDK verification
         run: python -m unittest discover -s ci -p 'test_*.py' -v
-      - name: Install MSI extraction tools
-        run: sudo apt-get update && sudo apt-get install -y msitools
-      - name: Obtain verified Dungeon Helper SDK
+      - name: Install MSI extraction and Authenticode signing tools
+        run: sudo apt-get update && sudo apt-get install -y msitools osslsigncode
+      - name: Obtain verified DH 4 and DH 5 SDKs
         run: python ci/get_sdk_linux.py --destination "$RUNNER_TEMP/reaction-timer-sdk"
-      - name: Cross-compile Windows solution
+      - name: Cross-compile Windows DH 4 and DH 5 solution
         run: |
           for configuration in Debug Release; do
-            dotnet build ReactionTimer.sln -c "$configuration" "-p:DungeonHelperDir=$DH_SDK_DIR"
-            python ci/check_build_output.py "src/bin/$configuration/net8.0-windows" "$configuration"
+            dotnet build ReactionTimer.sln -c "$configuration" "-p:DungeonHelperDir=$DH_SDK_DIR" "-p:Dh5SdkDir=$DH5_SDK_DIR"
+            python ci/check_build_output.py "src/bin/$configuration/net8.0-windows" "$configuration" --target dh4
+            python ci/check_build_output.py "src-dh5/bin/x64/$configuration/net10.0" "$configuration" --target dh5
           done
-          # Repeated Release builds must recreate the ZIP after loose files are removed.
-          dotnet build ReactionTimer.sln -c Release "-p:DungeonHelperDir=$DH_SDK_DIR"
-          python ci/check_build_output.py src/bin/Release/net8.0-windows Release
+          # Repeated Release builds must recreate the DH 4 ZIP after loose files are removed.
+          dotnet build ReactionTimer.sln -c Release "-p:DungeonHelperDir=$DH_SDK_DIR" "-p:Dh5SdkDir=$DH5_SDK_DIR"
+          python ci/check_build_output.py src/bin/Release/net8.0-windows Release --target dh4
+          python ci/check_build_output.py src-dh5/bin/x64/Release/net10.0 Release --target dh5
       - name: Run portable behavioral tests
         run: dotnet run --project tests/ReactionTimer.Tests.csproj -c Release --no-build -- --contracts dist/contracts-linux.json
+      - name: Sign/package DH 5 bundle and run Dh5Smoke on Linux
+        env:
+          DH_AUTHOR_KEY_B64: ${{ secrets.DH_AUTHOR_KEY_B64 }}
+        run: |
+          if [ -n "$DH_AUTHOR_KEY_B64" ]; then
+            python ci/sign_dh5.py --version 1.0.0 --input-dir src-dh5/bin/x64/Release/net10.0 --output dist/ReactionTimer-1.0.0-dh5-plugin.zip
+            dotnet run --project tests/Dh5Smoke/Dh5Smoke.csproj -c Release --no-build -- dist/ReactionTimer-1.0.0-dh5-plugin.zip "$DH5_SDK_DIR" --require-signed
+          else
+            python ci/sign_dh5.py --version 1.0.0 --input-dir src-dh5/bin/x64/Release/net10.0 --output dist/ReactionTimer-1.0.0-dh5-plugin.zip --allow-unsigned
+            dotnet run --project tests/Dh5Smoke/Dh5Smoke.csproj -c Release --no-build -- dist/ReactionTimer-1.0.0-dh5-plugin.zip "$DH5_SDK_DIR"
+          fi
 
   build:
     runs-on: windows-latest
@@ -84,56 +97,98 @@ jobs:
           if ($tags.Count -eq 0) {
             python ci/version.py
           } else {
-            $base = $tags[-1]
-            gh release download $base --pattern contracts.json --dir dist/baseline
-            if ($LASTEXITCODE -ne 0) {
-              $tagCommit = git rev-list -n 1 $base
-              $headCommit = git rev-parse HEAD
-              $release = gh release view $base --json isDraft | ConvertFrom-Json
-              if ($LASTEXITCODE -ne 0 -or -not $release.isDraft -or $tagCommit -ne $headCommit) {
-                throw 'Baseline contract missing. Restore the previous release asset before retrying.'
+            $highestTag = $tags[-1]
+            $base = $null
+            $headCommit = git rev-parse HEAD
+            for ($i = $tags.Count - 1; $i -ge 0; $i--) {
+              $candidate = $tags[$i]
+              gh release download $candidate --pattern contracts.json --dir dist/baseline --clobber 2>$null
+              if ($LASTEXITCODE -eq 0) {
+                $base = $candidate
+                Copy-Item dist/baseline/contracts.json dist/previous-contracts.json
+                break
               }
-              # Resume an interrupted first upload of this exact draft/commit.
-              Copy-Item dist/contracts.json dist/previous-contracts.json
-            } else {
-              Copy-Item dist/baseline/contracts.json dist/previous-contracts.json
+              $tagCommit = git rev-list -n 1 $candidate
+              if ($tagCommit -eq $headCommit) {
+                $raw = gh release view $candidate --json isDraft 2>$null
+                if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($raw)) {
+                  $release = $raw | ConvertFrom-Json
+                  if ($release.isDraft) {
+                    $base = $candidate
+                    Copy-Item dist/contracts.json dist/previous-contracts.json
+                    break
+                  }
+                }
+              }
             }
-            python ci/version.py --base $base
+            if (-not $base) {
+              throw 'Baseline contract missing. Restore the previous release asset before retrying.'
+            }
+            python ci/version.py --base $base --tag-floor $highestTag
           }
           if ($LASTEXITCODE -ne 0) { throw 'Version selection failed.' }
-      - name: Obtain verified Dungeon Helper SDK
+      - name: Obtain verified DH 4 and DH 5 SDKs
         shell: pwsh
         run: ./ci/Get-Sdk.ps1
       - name: Verify Debug output
         shell: pwsh
         run: |
-          dotnet build ReactionTimer.sln -c Debug "-p:DungeonHelperDir=$env:DH_SDK_DIR"
+          dotnet build ReactionTimer.sln -c Debug "-p:DungeonHelperDir=$env:DH_SDK_DIR" "-p:Dh5SdkDir=$env:DH5_SDK_DIR"
           if ($LASTEXITCODE -ne 0) { throw 'Debug build failed.' }
-          python ci/check_build_output.py src/bin/Debug/net8.0-windows Debug
-          if ($LASTEXITCODE -ne 0) { throw 'Debug output validation failed.' }
-      - name: Build and package
+          python ci/check_build_output.py src/bin/Debug/net8.0-windows Debug --target dh4
+          if ($LASTEXITCODE -ne 0) { throw 'DH 4 Debug output validation failed.' }
+          python ci/check_build_output.py src-dh5/bin/x64/Debug/net10.0 Debug --target dh5
+          if ($LASTEXITCODE -ne 0) { throw 'DH 5 Debug output validation failed.' }
+      - name: Build and package DH 4 and DH 5
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          PUBLISH_RELEASE: ${{ steps.version.outputs.publish }}
+          DH_AUTHOR_KEY_B64: ${{ secrets.DH_AUTHOR_KEY_B64 }}
+        run: |
+          $hasKey = -not [string]::IsNullOrWhiteSpace($env:DH_AUTHOR_KEY_B64)
+          if ($env:PUBLISH_RELEASE -eq 'true' -and -not $hasKey) {
+            throw 'DH_AUTHOR_KEY_B64 secret is required for publish/release builds.'
+          }
+          if ($hasKey) {
+            ./build.ps1 -DungeonHelperDir $env:DH_SDK_DIR -Dh5SdkDir $env:DH5_SDK_DIR -Version $env:RELEASE_VERSION
+          } else {
+            ./build.ps1 -DungeonHelperDir $env:DH_SDK_DIR -Dh5SdkDir $env:DH5_SDK_DIR -Version $env:RELEASE_VERSION -AllowUnsigned
+          }
+          python ci/check_build_output.py src/bin/Release/net8.0-windows Release --version $env:RELEASE_VERSION --target dh4
+          if ($LASTEXITCODE -ne 0) { throw 'DH 4 Release output validation failed.' }
+          python ci/check_build_output.py src-dh5/bin/x64/Release/net10.0 Release --version $env:RELEASE_VERSION --target dh5
+          if ($LASTEXITCODE -ne 0) { throw 'DH 5 Release output validation failed.' }
+      - name: Windows DH 4 plugin and layout smoke test
         shell: pwsh
         env:
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: |
-          ./build.ps1 -DungeonHelperDir $env:DH_SDK_DIR -Version $env:RELEASE_VERSION
-          python ci/check_build_output.py src/bin/Release/net8.0-windows Release --version $env:RELEASE_VERSION
-          if ($LASTEXITCODE -ne 0) { throw 'Release output validation failed.' }
-      - name: Windows plugin and layout smoke test
-        shell: pwsh
-        env:
-          RELEASE_VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          dotnet run --project tests/WindowsSmoke/WindowsSmoke.csproj -c Release -- "src/bin/Release/net8.0-windows/ReactionTimer-$env:RELEASE_VERSION-plugin.zip" "$env:DH_SDK_DIR"
+          dotnet run --project tests/WindowsSmoke/WindowsSmoke.csproj -c Release -- "src/bin/Release/net8.0-windows/ReactionTimer-$env:RELEASE_VERSION-dh4-plugin.zip" "$env:DH_SDK_DIR"
           if ($LASTEXITCODE -ne 0) { throw 'Windows smoke test failed.' }
-      - name: Validate package and create separate source archive
+      - name: DH 5 plugin trust, PE, and lifecycle smoke test
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          PUBLISH_RELEASE: ${{ steps.version.outputs.publish }}
+          DH_AUTHOR_KEY_B64: ${{ secrets.DH_AUTHOR_KEY_B64 }}
+        run: |
+          $hasKey = -not [string]::IsNullOrWhiteSpace($env:DH_AUTHOR_KEY_B64)
+          if ($hasKey -or $env:PUBLISH_RELEASE -eq 'true') {
+            dotnet run --project tests/Dh5Smoke/Dh5Smoke.csproj -c Release -- "dist/ReactionTimer-$env:RELEASE_VERSION-dh5-plugin.zip" "$env:DH5_SDK_DIR" --require-signed
+          } else {
+            dotnet run --project tests/Dh5Smoke/Dh5Smoke.csproj -c Release -- "dist/ReactionTimer-$env:RELEASE_VERSION-dh5-plugin.zip" "$env:DH5_SDK_DIR"
+          }
+          if ($LASTEXITCODE -ne 0) { throw 'DH 5 smoke test failed.' }
+      - name: Validate packages and create separate source archive
         run: python ci/package.py
       - uses: actions/upload-artifact@v4
         with:
           name: reaction-timer-${{ github.sha }}
           if-no-files-found: error
           path: |
-            dist/*-plugin.zip
+            dist/*-dh4-plugin.zip
+            dist/*-dh5-plugin.zip
             dist/*-source.zip
             dist/contracts.json
             dist/version.json

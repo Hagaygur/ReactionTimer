@@ -1,47 +1,33 @@
-# Build, release and troubleshooting
+# Build, release, signing and troubleshooting
 
 ## Install and use
 
-Install the release asset named `ReactionTimer-X.Y.Z-plugin.zip` directly through DH. It must contain only `VoK.ReactionTimer.dll`, `VoK.ReactionTimer.deps.json` and `VoK.ReactionTimer.metadata` under `plugins/ReactionTimer/`, DLL first. The source/repository ZIP is for development, never installation.
+Download the runtime archive for your host (never install `ReactionTimer-X.Y.Z-source.zip`):
 
-Close DDO before updating and fully restart DH afterward. If files are locked, close both applications and replace those three files manually in the existing plugin folder. Preserve settings and logs. Remove an old installed `source` subfolder with DH closed; do not leave duplicate plugin copies.
-
-Use the stopwatch panel to set font size, preview and move the HUD. Move unlocks dragging for 20 seconds. Close the panel during play; the independent timer remains. Test a real reaction after testing the preview. If names cannot be resolved, trigger the temporary spike, refresh the effects list, select it, assign its reaction and save the DID override.
-
-In Settings, **Re-spike alert (sec)** controls the expiry alert: 5 seconds by default, 0–60 seconds, with 0 turning it off. Expiry doubles the text size and flashes a black background once per second while keeping the text visible. After the interval it returns to the normal transparent RE-SPIKE display; detecting a new spike ends the alert early. The saved font size stays exact. Preview shows the countdown followed by the alert. Other duration changes apply on the next expiry; choosing 0 cancels an ongoing alert.
+- **DH 4 (`ReactionTimer-X.Y.Z-dh4-plugin.zip`):** install via **Settings → Add plugin from zip file**. Contains only `plugins/ReactionTimer/VoK.ReactionTimer.{dll,deps.json,metadata}`.
+- **DH 5 Beta (`ReactionTimer-X.Y.Z-dh5-plugin.zip`):** install via **Plugins → Install from zip**. Signed for `Alch Reaction Timer` with all 8 root files (`VoK.ReactionTimer.dll`, `.deps.json`, `plugin.metadata`, `.pem`, `.manifest`, `.manifest.sig`, `.entitlement`, `.entitlement.sig`).
 
 ## Development and release
 
-The complete setup and workflow explanation is in [GITHUB.md](../../GITHUB.md). Upload repository contents at the root, including `.github`. Windows builds and Linux cross-builds use the .NET 10 SDK targeting .NET 8 and the compatible DH SDK; Python 3 runs the version-policy and SDK verification checks. The source build script modifies version stamps in the working copy. Normal Release plugin builds leave only the installer ZIP in their output directory; Debug builds also retain the DLL, supporting files and PDB. See [development](DEVELOPMENT.md) for Linux commands and output paths.
+See [GITHUB.md](../../GITHUB.md) for the full CI pipeline. Both `src/**/*.cs` and `src-dh5/**/*.cs` qualify for releases; `build.yml` resolves the latest release carrying `contracts.json` (`--base`) while passing the highest merged tag as `--tag-floor` so orphan tags like `v1.0.1` do not block releases or collide.
+
+Local commands on Windows:
 
 ```powershell
 python -m unittest discover -s ci -p test_*.py -v
 dotnet run --project tests/ReactionTimer.Tests.csproj -c Release -- --contracts dist/contracts.json
-.\build.ps1 -DungeonHelperDir "$env:APPDATA\Dungeon Helper" -Version 1.0.0
+./ci/Get-Sdk.ps1
+.\build.ps1 -DungeonHelperDir $env:DH_SDK_DIR -Dh5SdkDir $env:DH5_SDK_DIR -Version 1.1.0 -AllowUnsigned
 ```
-
-The first successful stable release is 1.0.0. Publication requires changes to plugin C# files under src since the last stable release: additions, edits, renames and deletions count. Documentation, tests, CI/build scripts, project configuration and metadata alone still run checks and produce build artifacts, but do not publish or bump the version. Manual workflow runs follow the same rule. Comparing the full unreleased range preserves pending code changes after failed builds; fully reverted source changes do not qualify. Exact tagged-commit retries can resume interrupted drafts.
-
-For eligible code changes, changed/removed compatibility observations or removed feature observations request major; additions or feature behavior changes request minor; otherwise patch. A failing test blocks release. `feat:` and breaking-change declarations in commits touching plugin code can raise the result; documentation-only messages cannot. Contracts cover selected behavior, not all possible semantic changes. Branch/PR builds produce artifacts; only successful eligible default-branch runs publish. Keep released `contracts.json` assets intact.
-
-The CI SDK download is hash-pinned. If the official MSI changes, review and update the lock deliberately. Do not bypass the hash or substitute the newest SDK to make a build green.
 
 ## Diagnose by symptom
 
 | Symptom | First checks |
 | --- | --- |
-| Installed but no plugin icon | DH log, requested SDK assembly version, duplicate DLLs, runtime-only archive contents |
-| Already installed / update refuses | Choose overwrite if offered; otherwise close DH/DDO and replace runtime files manually |
-| Toolbar or buttons clipped | Record Windows display scaling, installed plugin version and screenshot; check `FitToolbarWidth` and layout smoke test |
-| HUD missing | Show timer / Preview, connection and foreground state, capture status; compare LS off versus on |
-| Two HUD copies under LS | Confirm updated independent HUD, close configuration panel, record capture mode and affinity status |
-| Wrong or absent countdown | Compare preview with live effect; export effect diagnostics and inspect DID, duration, pause/refresh events |
-| Font changes after save | Reopen settings and inspect saved `FontSizePixels`; reproduce 20 and 30 independently |
-| CI fails fetching SDK | Confirm the upstream installer and hashes; retain the compatible assembly requirement |
-| CI cannot find baseline contract | Restore the release asset or resume the incomplete draft; do not reset version history to evade it |
+| DH 5 `[NOT AUTHORIZED]` | Install `ReactionTimer-X.Y.Z-dh5-plugin.zip` (not unsigned/source ZIP), confirm `PluginId` `fc0b3f68-...` and all 8 root files |
+| DH 4 plugin missing or update locked | Close DDO/DH and replace `plugins/ReactionTimer/` runtime files; verify `VoK.Sdk 4.2.1.0` |
+| HUD missing or duplicated under LS (DH 4) | Check `Capture exclusion: ON` (or Wine fallback note), close settings panel, test WGC vs DXGI |
+| `RE-SPIKE` flashing in town/shrine | Ensure `SuppressAlertsInTown` is `true` |
+| CI fails comparing contracts | Ensure `build.yml` scans released tags for `contracts.json` and passes `--tag-floor` |
 
-## Windows integration check
-
-With LS off, open Preview and check transparent text, exact font save/reopen, movement, panel close/reopen and toolbar visibility. Trigger real spikes, then exercise refresh, pause, early removal and logout. Enable LS and repeat independently for WGC and DXGI; record LS version, Windows version/display scale, capture-exclusion status and observed copy count. Switch to an unrelated application to check hiding. Stop DH and confirm the HUD closes.
-
-Do not disable Crowd Source Collector to fix timer state or enable it to obtain effect data; it is not a timer dependency. Exported local diagnostics and DH logs are the relevant evidence. Human explanations of Collector are in [References](REFERENCES.md); agent counterpart: [Workflow](../agents/WORKFLOW.md).
+Agent counterpart: [Workflow](../agents/WORKFLOW.md).

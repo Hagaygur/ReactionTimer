@@ -56,6 +56,12 @@ internal sealed class HudWindow : Form
     protected override void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);
+        if (NativeHud.IsWineRuntime)
+        {
+            _captureStatus = "Capture exclusion: skipped (Wine/Proton)";
+            _status(_captureStatus); _engine.Report(_captureStatus);
+            return;
+        }
         bool set = NativeHud.SetWindowDisplayAffinity(Handle, 0x11);
         int error = Marshal.GetLastWin32Error();
         bool verified = set && NativeHud.GetWindowDisplayAffinity(Handle, out var affinity) && affinity == 0x11;
@@ -125,7 +131,8 @@ internal sealed class HudWindow : Form
             bool foreground = ForegroundAllowed();
             bool display = (_settings.HudEnabled || demo || editing) &&
                 (demo || editing || (foreground && live.Mode != TimerMode.Disconnected));
-            if (display && !demo && _lastAlarm >= 0 && live.Alarm > _lastAlarm &&
+            bool townQuiet = live.InTown && _settings.SuppressAlertsInTown;
+            if (display && !demo && !townQuiet && _lastAlarm >= 0 && live.Alarm > _lastAlarm &&
                 _settings.SoundOnExpiry && live.Mode == TimerMode.Expired) SystemSounds.Exclamation.Play();
             _lastAlarm = live.Alarm;
             _status(_captureStatus + (editing ? " • drag timer now" : display ? " • HUD visible" : " • HUD hidden"));
@@ -150,6 +157,7 @@ internal sealed class HudWindow : Form
     private bool ForegroundAllowed()
     {
         var current = NativeHud.GetForegroundWindow();
+        if (NativeHud.IsWineRuntime && current == IntPtr.Zero) return true;
         if (current == _foreground) return _foregroundAllowed;
         _foreground = current;
         NativeHud.GetWindowThreadProcessId(current, out uint pid);
@@ -167,23 +175,65 @@ internal sealed class HudWindow : Form
     private void Render(TimerView view, bool demo, double now, HudAlertFrame alert)
     {
         string text = HudPresentation.Text(view, demo);
-        bool urgent = view.Mode == TimerMode.Expired || (view.Mode == TimerMode.Active && view.Remaining <= _settings.WarningSeconds);
-        Color color = urgent ? Color.FromArgb(255, 99, 108) : view.Reaction switch
-        {
-            Reaction.Pyrite => Color.FromArgb(255, 181, 67),
-            Reaction.Orchidium => Color.FromArgb(189, 145, 255),
-            Reaction.Verdanite => Color.FromArgb(103, 222, 159),
-            _ => Color.FromArgb(180, 208, 230)
-        };
+        bool townPaused = !demo && view.InTown && view.Mode == TimerMode.Paused;
+        bool urgent = !townPaused && (view.Mode == TimerMode.Expired || (view.Mode == TimerMode.Active && view.Remaining <= _settings.WarningSeconds));
+        Color color = townPaused
+            ? Color.FromArgb(169, 177, 195)
+            : urgent
+                ? Color.FromArgb(255, 99, 108)
+                : view.Reaction switch
+                {
+                    Reaction.Pyrite => Color.FromArgb(255, 181, 67),
+                    Reaction.Orchidium => Color.FromArgb(189, 145, 255),
+                    Reaction.Verdanite => Color.FromArgb(103, 222, 159),
+                    _ => Color.FromArgb(180, 208, 230)
+                };
         int fontPixels = alert.FontSize(_settings.FontSizePixels);
-        string key = $"{text}/{color.ToArgb()}/{fontPixels}/{alert.BlackBackground}/{(_editing ? Math.Ceiling(_editUntil - now) : 0)}";
+        bool showBar = _settings.ShowDepletionBar && !townPaused &&
+            view.Mode is TimerMode.Active or TimerMode.Paused &&
+            view.Remaining.HasValue && view.Duration > 0;
+        double depletion = showBar ? HudPresentation.DepletionFraction(view) : 0;
+        int barBucket = showBar ? (int)Math.Round(depletion * 100) : -1;
+        string? primerHint = !demo ? HudPresentation.NextPrimerHint(view) : null;
+        var palette = UiThemePalettes.Get(_settings.Theme);
+        string key = $"{text}/{color.ToArgb()}/{fontPixels}/{alert.BlackBackground}/{barBucket}/{primerHint}/{_settings.Theme}/{(_editing ? Math.Ceiling(_editUntil - now) : 0)}";
         if (key == _lastRenderKey && !_needsPosition) return;
+
+        bool drawGlyph = !townPaused && view.Reaction != Reaction.Any;
+        float glyphSize = drawGlyph ? Math.Max(8f, fontPixels * 0.52f) : 0f;
+        float glyphAdvance = drawGlyph ? glyphSize + Math.Max(5f, fontPixels * 0.22f) : 0f;
+
         using var path = new GraphicsPath();
         path.AddString(text, _family, (int)FontStyle.Bold, fontPixels, PointF.Empty, StringFormat.GenericTypographic);
         var bounds = path.GetBounds();
-        using (var shift = new Matrix()) { shift.Translate(5 - bounds.X, 5 - bounds.Y); path.Transform(shift); }
-        int width = Math.Max(_editing ? 230 : 1, (int)Math.Ceiling(bounds.Width) + 10);
-        int height = (int)Math.Ceiling(bounds.Height) + 10 + (_editing ? 20 : 0);
+        using (var shift = new Matrix())
+        {
+            shift.Translate(5 + glyphAdvance - bounds.X, 5 - bounds.Y);
+            path.Transform(shift);
+        }
+
+        using GraphicsPath? hintPath = primerHint is not null ? new GraphicsPath() : null;
+        float hintHeight = 0;
+        float hintWidth = 0;
+        if (hintPath is not null && primerHint is not null)
+        {
+            float hintPx = Math.Max(11f, fontPixels * 0.42f);
+            hintPath.AddString(primerHint, _family, (int)FontStyle.Bold, hintPx, PointF.Empty, StringFormat.GenericTypographic);
+            var hb = hintPath.GetBounds();
+            hintWidth = hb.Width;
+            hintHeight = hb.Height + 4;
+            using var hShift = new Matrix();
+            hShift.Translate(5 - hb.X, 5 + bounds.Height + 4 - hb.Y);
+            hintPath.Transform(hShift);
+        }
+
+        const int barHeight = 6;
+        int barExtra = showBar ? barHeight + 5 : 0;
+        int hintExtra = hintPath is not null ? (int)Math.Ceiling(hintHeight) : 0;
+        int contentWidth = (int)Math.Ceiling(Math.Max(bounds.Width + glyphAdvance, hintWidth));
+        int width = Math.Max(_editing ? 230 : 1, contentWidth + 10);
+        int height = (int)Math.Ceiling(bounds.Height) + 10 + barExtra + hintExtra + (_editing ? 20 : 0);
+
         bool sizeChanged = _surface.Size.Width != width || _surface.Size.Height != height;
         _surface.Resize(width, height);
         _movingProgrammatically = true;
@@ -194,6 +244,7 @@ internal sealed class HudWindow : Form
         }
         finally { _movingProgrammatically = false; }
         _needsPosition = false;
+
         var g = _surface.Graphics!;
         g.CompositingMode = CompositingMode.SourceCopy; g.Clear(Color.Transparent);
         g.CompositingMode = CompositingMode.SourceOver; g.SmoothingMode = SmoothingMode.AntiAlias;
@@ -208,12 +259,81 @@ internal sealed class HudWindow : Form
             using var hint = new SolidBrush(Color.White);
             g.DrawString($"DRAG TO MOVE • locks in {Math.Ceiling(_editUntil - now):0}s", _editFont, hint, 5, height - 18);
         }
+
         using var outline = new Pen(Color.FromArgb(210, 0, 0, 0), 2.5f) { LineJoin = LineJoin.Round };
         using var fill = new SolidBrush(color);
-        g.DrawPath(outline, path); g.FillPath(fill, path); g.Flush();
+
+        if (drawGlyph)
+        {
+            float cy = 5 + bounds.Height * 0.5f;
+            DrawCvdGlyph(g, view.Reaction, 5 + glyphSize * 0.5f, cy, glyphSize * 0.48f, outline, fill);
+        }
+
+        g.DrawPath(outline, path); g.FillPath(fill, path);
+
+        if (showBar)
+        {
+            float barX = 5f;
+            float barY = 5f + bounds.Height + 4f;
+            float barW = Math.Max(20f, width - 10f);
+            using var trackBrush = new SolidBrush(Color.FromArgb(215, palette.SurfaceLowest.R, palette.SurfaceLowest.G, palette.SurfaceLowest.B));
+            using var borderPen = new Pen(Color.FromArgb(205, palette.Outline.R, palette.Outline.G, palette.Outline.B), 1f);
+            g.FillRectangle(trackBrush, barX, barY, barW, barHeight);
+            float fillW = (float)(barW * depletion);
+            if (fillW > 0.5f) g.FillRectangle(fill, barX, barY, fillW, barHeight);
+            double warnFrac = HudPresentation.WarningFraction(view, _settings.WarningSeconds);
+            if (warnFrac > 0 && warnFrac < 1)
+            {
+                float notchX = barX + (float)(barW * warnFrac);
+                using var notchPen = new Pen(Color.FromArgb(245, palette.Primary.R, palette.Primary.G, palette.Primary.B), 1.5f);
+                g.DrawLine(notchPen, notchX, barY - 1f, notchX, barY + barHeight + 1f);
+            }
+            g.DrawRectangle(borderPen, barX, barY, barW, barHeight);
+        }
+
+        if (hintPath is not null)
+        {
+            using var accentFill = new SolidBrush(Color.FromArgb(palette.Primary.R, palette.Primary.G, palette.Primary.B));
+            g.DrawPath(outline, hintPath);
+            g.FillPath(accentFill, hintPath);
+        }
+
+        g.Flush();
         _surface.Present(Handle, Location);
         _lastRenderKey = key;
     }
+
+    private static void DrawCvdGlyph(Graphics g, Reaction reaction, float cx, float cy, float r, Pen outline, Brush fill)
+    {
+        using var gp = new GraphicsPath();
+        switch (reaction)
+        {
+            case Reaction.Pyrite:
+                gp.AddPolygon(new[] { new PointF(cx, cy - r), new PointF(cx + r, cy + r), new PointF(cx - r, cy + r) });
+                break;
+            case Reaction.Orchidium:
+                gp.AddPolygon(new[] { new PointF(cx, cy - r), new PointF(cx + r, cy), new PointF(cx, cy + r), new PointF(cx - r, cy) });
+                break;
+            case Reaction.Verdanite:
+                float arm = Math.Max(2f, r * 0.36f);
+                gp.AddPolygon(new[]
+                {
+                    new PointF(cx - arm, cy - r), new PointF(cx + arm, cy - r),
+                    new PointF(cx + arm, cy - arm), new PointF(cx + r, cy - arm),
+                    new PointF(cx + r, cy + arm), new PointF(cx + arm, cy + arm),
+                    new PointF(cx + arm, cy + r), new PointF(cx - arm, cy + r),
+                    new PointF(cx - arm, cy + arm), new PointF(cx - r, cy + arm),
+                    new PointF(cx - r, cy - arm), new PointF(cx - arm, cy - arm)
+                });
+                break;
+            default:
+                gp.AddEllipse(cx - r, cy - r, r * 2, r * 2);
+                break;
+        }
+        g.DrawPath(outline, gp);
+        g.FillPath(fill, gp);
+    }
+
     protected override void Dispose(bool disposing)
     {
         if (disposing) { _tick.Stop(); _tick.Dispose(); _surface.Dispose(); _family.Dispose(); _editFont.Dispose(); }

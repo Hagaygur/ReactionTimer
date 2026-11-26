@@ -1,32 +1,37 @@
-ALCHEMIST REACTION TIMER 1.0.0
+ALCHEMIST REACTION TIMER
 
-INSTALL DDO-Reaction-Timer-DH-only.zip DIRECTLY. It contains only three runtime files.
-DDO-Reaction-Timer-source.zip is separate; do NOT import it into Dungeon Helper.
+INSTALL THE ARCHIVE MATCHING YOUR DUNGEON HELPER VERSION.
+NEVER install ReactionTimer-X.Y.Z-source.zip into Dungeon Helper.
+
+=== DUNGEON HELPER 4 (4.2.1.0, Windows .NET 8) ===
+Install ReactionTimer-X.Y.Z-dh4-plugin.zip directly.
 1. Close DDO. Open Dungeon Helper Settings > Add plugin from zip file.
-2. Select DDO-Reaction-Timer-DH-only.zip.
-3. If asked to overwrite the already-installed ReactionTimer folder, choose Yes.
+2. Select ReactionTimer-X.Y.Z-dh4-plugin.zip.
+3. If asked to overwrite the existing ReactionTimer folder, choose Yes.
 4. Fully exit Dungeon Helper from its tray icon, restart it, then launch DDO.
 
-If DH refuses the update or reports a file in use:
-Fully close DDO and Dungeon Helper. Extract the ZIP. Copy the CONTENTS of
-plugins\ReactionTimer into your existing installation's plugins\ReactionTimer
-folder, replacing files. Usually this is:
-%APPDATA%\Dungeon Helper\plugins\ReactionTimer\
-Do not copy the DLL into a second plugin folder. If present, remove the old
-plugins\ReactionTimer\source subfolder while DH is closed. Keep settings/logs.
+If DH 4 refuses the update or reports a file in use:
+Close DDO and DH, extract the ZIP, and copy the contents of plugins\ReactionTimer
+into %APPDATA%\Dungeon Helper\plugins\ReactionTimer\ while keeping settings/logs.
+
+=== DUNGEON HELPER 5 BETA (5.3.0.0, x64, DirectX 10/11) ===
+Install ReactionTimer-X.Y.Z-dh5-plugin.zip directly (signed community entitlement).
+1. Close DDO. Open Dungeon Helper 5 Beta Plugins > Install from zip.
+2. Select ReactionTimer-X.Y.Z-dh5-plugin.zip.
+3. Launch DDO in DX10 or DX11 (x64). Settings live under:
+   %LocalAppData%\DungeonHelperData\plugins\Alch Reaction Timer\
 
 USE
-Open the amber stopwatch control panel. Settings / effects > Font size (px)
-accepts 10-160; 20 and 30 save exactly. Default is 28.
-Click Preview, then Move (20s) and drag the timer to its desired position.
-Close the DH control panel while playing; the separate transparent timer stays.
-Enable Lossless Scaling and try Preview again in both WGC and DXGI.
+- DH 4: Click the amber stopwatch icon. Settings / effects sets Font size (px)
+  10-160 (default 28), Theme (EberronGold / CannithArcane / FeywildTwilight),
+  SuppressAlertsInTown, ShowDepletionBar, and RespikeAlertSeconds (0-60, default 5).
+  Click Preview, then Move (20s) to drag the transparent click-through HUD.
+- DH 5 Beta: Toggle the Material-tabbed window from the DH 5 plugin bar, or use
+  /alch status | /alch warn <0-10> | /alch hud [on|off|pill|donut] |
+  /alch town [on|off] | /alch theme <eberron|cannith|feywild> |
+  /alch respike | /alch reset.
 
-The status should say Capture exclusion: ON. This means Windows accepted the
-exclusion request; it is not proof that every LS capture backend honors it.
-If visibility still fails, report the full status, LS version, capture mode,
-and whether Preview is visible with LS off. Live LS testing is still required.
-Other Dungeon Helper panels/toolbars are not modified by this plugin.
-
-For GitHub builds, install the ReactionTimer-X.Y.Z-plugin.zip release asset.
-The GitHub repository/source archive itself is not a DH plugin installer.
+LOSSLESS SCALING (DH 4)
+Status should show Capture exclusion: ON (Windows accepted WDA_EXCLUDEFROMCAPTURE;
+Wine/Proton shows a fallback note). Test Preview with the settings panel closed
+in both WGC and DXGI. DH 5 renders directly inside DDO's DX10/11 frame.

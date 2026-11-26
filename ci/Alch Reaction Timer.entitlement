@@ -1,0 +1,11 @@
+{
+  "serial": "DH-COMMUNITY-ALCH REACTION TIMER-20261126",
+  "pluginId": "fc0b3f68-e30d-4d1f-b2ac-4e5d62bb1725",
+  "pluginName": "Alch Reaction Timer",
+  "authorId": "auth_d4354f01",
+  "authorName": "Warned",
+  "authorKeyFingerprint": "38C3897AD429A949FE9CFE9B7064C3EC8DF4B6A0E93B261C79FEF27B2DA333AB",
+  "tier": "community",
+  "notBefore": "2026-11-26T00:00:00Z",
+  "notAfter": "2027-11-26T00:00:00Z"
+}

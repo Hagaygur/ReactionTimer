@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Platforms>x64</Platforms>
+    <Platform>x64</Platform>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <AssemblyName>VoK.ReactionTimer</AssemblyName>
+    <RootNamespace>VoK.ReactionTimer</RootNamespace>
+    <Version>1.0.0</Version>
+    <AssemblyTitle>Alch Reaction Timer</AssemblyTitle>
+    <Product>Alch Reaction Timer</Product>
+    <Company>Warned</Company>
+    <Authors>Warned</Authors>
+    <Description>In-game Reaction Spike countdown HUD for Dungeon Helper 5</Description>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>13.0</LangVersion>
+    <Deterministic>true</Deterministic>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AppendTargetFrameworkToOutputPath>true</AppendTargetFrameworkToOutputPath>
+    <Dh5SdkDir Condition="'$(Dh5SdkDir)' == '' And '$(DH5_SDK_DIR)' != ''">$(DH5_SDK_DIR)</Dh5SdkDir>
+    <Dh5SdkDir Condition="'$(Dh5SdkDir)' == ''">$(MSBuildThisFileDirectory)../.sdk-cache/dh5</Dh5SdkDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../src/TimerState.cs" Link="Shared/TimerState.cs" />
+    <Compile Include="../src/ReactionMatcher.cs" Link="Shared/ReactionMatcher.cs" />
+    <Compile Include="../src/Settings.cs" Link="Shared/Settings.cs" />
+    <Compile Include="../src/HudPresentation.cs" Link="Shared/HudPresentation.cs" />
+    <Compile Include="../src/UiTheme.cs" Link="Shared/UiTheme.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Assets/Icon.png" LogicalName="VoK.ReactionTimer.Icon.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="VoK.Sdk">
+      <HintPath>$(Dh5SdkDir)/VoK.Sdk.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <Target Name="CheckDh5Sdk" BeforeTargets="ResolveAssemblyReferences">
+    <Error Condition="!Exists('$(Dh5SdkDir)/VoK.Sdk.dll')"
+           Text="DH 5 VoK.Sdk.dll not found at '$(Dh5SdkDir)/VoK.Sdk.dll'. Set Dh5SdkDir or DH5_SDK_DIR." />
+  </Target>
+</Project>

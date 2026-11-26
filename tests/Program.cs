@@ -57,9 +57,89 @@ internal static class Program
         Assert(ReactionMatcher.Match("Reaction Spike", 12) == Reaction.Any, "generic spike name supported");
         Assert(ReactionMatcher.Match("Orchidium Spike", 12) == Reaction.Orchidium, "Orchidium detection");
         Assert(ReactionMatcher.Match("Verdanite Spike", 12) == Reaction.Verdanite, "Verdanite detection");
-        var settings = new Settings { WarningSeconds = double.NaN, FontSizePixels = 999, HudX = double.NaN, HudY = -1 };
+
+        // Persistent base Reaction stance & opposing primer hints
+        Assert(ReactionMatcher.MatchBaseStance("Pyrite Reaction", -1) == Reaction.Pyrite, "permanent Pyrite base stance detected");
+        Assert(ReactionMatcher.MatchBaseStance("Pyrite Reaction", 0) == Reaction.Pyrite, "zero-duration permanent Pyrite base stance detected");
+        Assert(ReactionMatcher.MatchBaseStance("Orchidium Reaction", 3600) == Reaction.Orchidium, "long-duration Orchidium base stance detected");
+        Assert(ReactionMatcher.MatchBaseStance("Verdanite Reaction", null) == Reaction.Verdanite, "indefinite Verdanite base stance detected");
+        Assert(ReactionMatcher.MatchBaseStance("Pyrite Reaction Spike", -1) is null, "spike name excluded from base stance");
+        Assert(ReactionMatcher.MatchBaseStance("Pyrite Reaction", 12) is null, "short duration excluded from base stance");
+        Assert(ReactionMatcher.NextPrimerFor(Reaction.Pyrite) == "Ceruleite", "Pyrite next primer is Ceruleite");
+        Assert(ReactionMatcher.NextPrimerFor(Reaction.Orchidium) == "Gildleaf", "Orchidium next primer is Gildleaf");
+        Assert(ReactionMatcher.NextPrimerFor(Reaction.Verdanite) == "Crimsonite", "Verdanite next primer is Crimsonite");
+        Assert(ReactionMatcher.NextPrimerFor(Reaction.Any) is null, "Any stance has no specific primer");
+
+        // Town suppression, shrine pause-change resync, & base-stance exposure in TimerState
+        s.Reset(true);
+        s.SetBaseStance(Reaction.Pyrite);
+        s.SetTownState(true, true);
+        s.Apply(10, 100, Reaction.Pyrite, 12, 12, false, false, 10, true);
+        var townActive = s.Read(15);
+        Assert(townActive.Mode == TimerMode.Paused && townActive.InTown && townActive.BaseStance == Reaction.Pyrite,
+            "active spike in town shows calm paused state when suppressed");
+        long townAlarmBefore = townActive.Alarm;
+        var townExpired = s.Read(30);
+        Assert(townExpired.Mode == TimerMode.Paused && townExpired.InTown && townExpired.Alarm == townAlarmBefore,
+            "expiring in town suppresses alarm and stays calm");
+        Assert(HudPresentation.Text(townActive, false) == "TOWN  PAUSED", "town active text displays TOWN  PAUSED");
+        Assert(HudPresentation.Text(townExpired, false) == "TOWN  RESTING", "town resting text displays TOWN  RESTING");
+        s.SetTownState(false, true);
+        s.Apply(11, 100, Reaction.Pyrite, 12, 12, false, false, 40, true);
+        var questExpired = s.Read(60);
+        Assert(questExpired.Mode == TimerMode.Expired && questExpired.Alarm == townAlarmBefore + 1 && questExpired.BaseStance == Reaction.Pyrite,
+            "leaving town resumes normal expiry alerts with base stance");
+        Assert(HudPresentation.NextPrimerHint(questExpired) == "CAST CERULEITE", "expired Pyrite stance cues Ceruleite");
+        s.SetTownState(true, false);
+        s.SetBaseStance(Reaction.Orchidium);
+        s.Apply(12, 100, Reaction.Orchidium, 12, 12, false, false, 70, true);
+        var townUnsuppressed = s.Read(90);
+        Assert(townUnsuppressed.Mode == TimerMode.Expired && townUnsuppressed.Alarm == questExpired.Alarm + 1,
+            "disabling SuppressAlertsInTown allows town alerts");
+        Assert(HudPresentation.NextPrimerHint(townUnsuppressed) == "CAST GILDLEAF",
+            "expired spike in town with SuppressAlertsInTown=false still shows next-primer hint");
+
+        // Shrine IsPaused scan resync (standing up from Rest Shrine without OnEffectUpdateDuration)
+        s.Reset(true);
+        s.Apply(20, 200, Reaction.Verdanite, null, 12, paused: true, estimated: false, now: 100, refresh: false);
+        Assert(s.IsPaused(20) && s.Read(105).Mode == TimerMode.Paused, "shrine-paused spike tracked as paused");
+        // Snapshot with unchanged IsPaused must not restart; changed IsPaused refreshes cleanly
+        s.Apply(20, 200, Reaction.Verdanite, 8, 12, paused: false, estimated: false, now: 106, refresh: true);
+        Assert(!s.IsPaused(20) && s.Read(108).Mode == TimerMode.Active && s.Read(108).Remaining == 6,
+            "shrine unpause scan resync transitions paused spike back to active countdown");
+
+        var settings = new Settings
+        {
+            WarningSeconds = double.NaN,
+            FontSizePixels = 999,
+            HudX = double.NaN,
+            HudY = -1,
+            HudOpacity = 5.0,
+            QuickRespikeBar = 99,
+            QuickRespikeSlot = -3,
+            Theme = (UiTheme)999
+        };
         settings.Validate();
         Assert(settings.WarningSeconds == 2 && settings.FontSizePixels == 160 && settings.HudX == .5 && settings.HudY == 0, "invalid settings bounded");
+        Assert(settings.HudOpacity == 1.0 && settings.QuickRespikeBar == 20 && settings.QuickRespikeSlot == 0 && settings.Theme == UiTheme.EberronGold,
+            "new DH5/UX/theme settings bounded");
+        var freshDefaults = new Settings();
+        Assert(freshDefaults.SuppressAlertsInTown && freshDefaults.ShowDepletionBar && freshDefaults.ShowSpellPointsBar &&
+               freshDefaults.HudMode == HudDisplayMode.CompactPill && freshDefaults.Theme == UiTheme.EberronGold &&
+               !freshDefaults.QuickRespikeEnabled && freshDefaults.QuickRespikeBar == 0 && freshDefaults.QuickRespikeSlot == 0,
+            "new gameplay/UX/theme/quick-cast settings default safely");
+
+        // All 3 DDO x Material Design 3 palettes & parser checks
+        Assert(Enum.GetValues<UiTheme>().Length == 3, "exactly three DDO Material Dark themes defined");
+        Assert(UiThemePalettes.Get(UiTheme.EberronGold).Primary == new ThemeRgb(0xE2, 0xB7, 0x5B) &&
+               UiThemePalettes.Get(UiTheme.CannithArcane).Primary == new ThemeRgb(0x56, 0xCC, 0xF2) &&
+               UiThemePalettes.Get(UiTheme.FeywildTwilight).Primary == new ThemeRgb(0xCD, 0xA4, 0xFF),
+            "all three DDO Material Dark primary accents match spec");
+        Assert(UiThemePalettes.TryParse("eberron", out var t0) && t0 == UiTheme.EberronGold &&
+               UiThemePalettes.TryParse("cannith", out var t1) && t1 == UiTheme.CannithArcane &&
+               UiThemePalettes.TryParse("feywild", out var t2) && t2 == UiTheme.FeywildTwilight &&
+               !UiThemePalettes.TryParse("unknown", out _),
+            "theme parser recognizes eberron/cannith/feywild and rejects invalid tokens");
         foreach (int requested in new[] { 10, 20, 30, 160 })
             Assert(SettingsInput.TryFontSize(requested.ToString(), out int parsed) && parsed == requested, $"font input {requested} stays exact");
         foreach (string invalid in new[] { "", "abc", "9", "161", "20.5", "999999999999" })
@@ -77,12 +157,33 @@ internal static class Program
             var migrated = store.Load();
             Assert(migrated.FontSizePixels == 28 && migrated.EffectMappings[42] == Reaction.Pyrite, "old settings retain mappings and use new pixel default");
             Assert(migrated.RespikeAlertSeconds == 5, "old settings receive five-second respike alert");
+            Assert(migrated.SuppressAlertsInTown && migrated.ShowDepletionBar && migrated.HudOpacity == 0.90 && migrated.HudMode == HudDisplayMode.CompactPill,
+                "old settings migrate with safe defaults for new fields");
             foreach (int seconds in new[] { 0, 1, 17, 60 })
             {
                 migrated.RespikeAlertSeconds = seconds; store.Save(migrated);
                 Assert(store.Load().RespikeAlertSeconds == seconds && migrated.Copy().RespikeAlertSeconds == seconds,
                     $"alert duration {seconds}s survives save and copy");
             }
+            foreach (var theme in Enum.GetValues<UiTheme>())
+            {
+                migrated.Theme = theme;
+                store.Save(migrated);
+                Assert(store.Load().Theme == theme && migrated.Copy().Theme == theme, $"theme {theme} survives save and copy");
+            }
+            migrated.SuppressAlertsInTown = false;
+            migrated.ShowDepletionBar = false;
+            migrated.HudMode = HudDisplayMode.RadialDonut;
+            migrated.HudOpacity = 0.65;
+            migrated.QuickRespikeEnabled = true;
+            migrated.QuickRespikeBar = 4;
+            migrated.QuickRespikeSlot = 7;
+            store.Save(migrated);
+            var reloaded = store.Load();
+            Assert(!reloaded.SuppressAlertsInTown && !reloaded.ShowDepletionBar &&
+                   reloaded.HudMode == HudDisplayMode.RadialDonut && Math.Abs(reloaded.HudOpacity - 0.65) < 0.001 &&
+                   reloaded.QuickRespikeEnabled && reloaded.QuickRespikeBar == 4 && reloaded.QuickRespikeSlot == 7,
+                "new settings survive save and reload");
         }
         finally { Directory.Delete(temp, true); }
         var monitor = new Rectangle(-1920, 0, 1920, 1080);
@@ -91,6 +192,10 @@ internal static class Program
         var active = new TimerView(TimerMode.Active, Reaction.Pyrite, 3.5, 12, false, 0, "");
         Assert(HudPresentation.Text(active, false) == "PYRITE  3.5", "compact countdown text");
         Assert(HudPresentation.Text(active, true) == "PREVIEW  3.5", "preview clearly marked");
+        Assert(Math.Abs(HudPresentation.DepletionFraction(active) - (3.5 / 12.0)) < 0.0001, "depletion bar fraction matches remaining/duration");
+        Assert(Math.Abs(HudPresentation.WarningFraction(active, 2.0) - (2.0 / 12.0)) < 0.0001, "warning notch fraction matches warning/duration");
+        Assert(HudPresentation.CvdSymbol(Reaction.Pyrite) == "▲" && HudPresentation.CvdSymbol(Reaction.Orchidium) == "◆" &&
+               HudPresentation.CvdSymbol(Reaction.Verdanite) == "✚", "CVD-safe symbols mapped");
         var alertState = new HudAlertState();
         var expired = active with { Mode = TimerMode.Expired, Remaining = 0, Alarm = 1 };
         Assert(!alertState.Update(active, 0, 5).Enlarged, "active countdown has no respike alert");

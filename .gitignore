@@ -5,4 +5,9 @@
 .vs/
 dist/
 .build/
+.sdk-cache/
 *.user
+/src.zip
+*.key
+*.pfx
+signing.*

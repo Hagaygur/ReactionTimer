@@ -1,93 +1,59 @@
 # Automatic GitHub builds and releases
 
-Developer entry points: [ReactionTimer.sln](ReactionTimer.sln), [human/agent documentation map](docs/README.md), and [AGENTS.md](AGENTS.md). Source release archives include the solution and editor configurations.
+Developer entry points: [ReactionTimer.sln](ReactionTimer.sln), [human/agent documentation map](docs/README.md), and [AGENTS.md](AGENTS.md). Source release archives include the solution, both `src/` and `src-dh5/`, tests, CI scripts, and editor configurations.
 
-Toolchain: .NET 10 SDK builds .NET 8 targets for the pinned DH host. CI also installs .NET 8 to run compatibility tests. See [runtime/toolchain details](docs/human/DEVELOPMENT.md).
+Toolchain: .NET 10 SDK builds both `.NET 8 Windows` (`src/`) against pinned `VoK.Sdk 4.2.1.0` and `.NET 10 x64` (`src-dh5/`) against pinned `VoK.Sdk 5.3.0.0`. CI also installs .NET 8 to run compatibility tests. See [runtime/toolchain details](docs/human/DEVELOPMENT.md).
 
 ## Set up once
 
-1. Create a GitHub repository and extract this archive.
-2. Upload **its contents to the repository root**, including the `.github` directory. The workflow must be at `.github/workflows/build.yml`, not under another `DDO-Reaction-Timer` folder. Do not upload this ZIP as a single repository file.
-3. Commit/push to the repository's default branch. Open **Actions → Build, test and release**.
-4. The first successful run publishes **v1.0.0** under **Releases**. Download `ReactionTimer-1.0.0-plugin.zip` and install it directly through DH. The separate source ZIP must never go inside DH's plugin folder.
+1. Upload repository contents at the repository root, including `.github/workflows/build.yml` and the public community entitlement files in `ci/`.
+2. Configure the repository Actions secret **`DH_AUTHOR_KEY_B64`** (base64-encoded PKCS#8 author private key matching `ci/Alch Reaction Timer.entitlement` `authorKeyFingerprint`). Never commit `*.key` or `*.pfx` to the repository.
+3. Push to `master`. Open **Actions → Build, test and release**.
+4. Successful releases publish under **Releases** with dual runtime installers: `ReactionTimer-X.Y.Z-dh4-plugin.zip` (DH 4) and signed `ReactionTimer-X.Y.Z-dh5-plugin.zip` (DH 5 Beta), plus `ReactionTimer-X.Y.Z-source.zip` (never install the source ZIP in DH).
 
-GitHub Actions and GitHub-hosted runners must be enabled. No personal access token, manually installed SDK or extra secret is required; publication uses the repository's built-in token with `contents: write` in the release job. Organization or tag-protection policies may require an administrator to permit release creation.
+Fork pull requests without `DH_AUTHOR_KEY_B64` still build and pass `Dh5Smoke` in `--allow-unsigned` mode, while publish/release builds require `DH_AUTHOR_KEY_B64` and fail if unsigned.
 
 ## Triggers and outputs
 
-Every branch push and pull request runs checks and produces downloadable Actions artifacts. Successful default-branch pushes and manual runs publish a tagged release only when plugin C# source (`src/**/*.cs`, including files directly under src) differs from the last reachable stable release. Additions, edits, renames and deletions count. Documentation, tests, CI/build scripts, project configuration and metadata alone do not trigger publication or a version bump. Other branches and PRs do not publish or reserve release versions.
-
-The comparison covers the entire unreleased range, not just the last commit or push. This preserves pending code changes after a failed or coalesced run, even when the latest commit only edits documentation. Fully reverted source changes do not qualify. With no previous release, tracked plugin source permits the initial 1.0.0 release. Rapid pushes are serialized; GitHub may coalesce pending runs in favor of the newest push.
+Every branch push and pull request runs checks and produces downloadable Actions artifacts. Successful default-branch pushes and manual runs publish a tagged release only when plugin C# source (`src/**/*.cs` or `src-dh5/**/*.cs`) differs from the last reachable released baseline. Additions, edits, renames, and deletions count. Documentation, tests, CI/build scripts, project configuration, and metadata alone do not trigger publication or a version bump.
 
 Release assets:
 
-- `ReactionTimer-X.Y.Z-plugin.zip`: exactly the DLL, dependency manifest and plugin metadata, under `plugins/ReactionTimer/`, with the DLL first.
-- `ReactionTimer-X.Y.Z-source.zip`: source, workflow, tests and instructions, entirely separate.
+- `ReactionTimer-X.Y.Z-dh4-plugin.zip`: DH 4 archive (`plugins/ReactionTimer/VoK.ReactionTimer.{dll,deps.json,metadata}`, DLL first).
+- `ReactionTimer-X.Y.Z-dh5-plugin.zip`: DH 5 Beta signed archive (8 root entries: `Alch Reaction Timer.entitlement`, `.entitlement.sig`, `.manifest`, `.manifest.sig`, `.pem`, `VoK.ReactionTimer.dll`, `.deps.json`, `plugin.metadata`).
+- `ReactionTimer-X.Y.Z-source.zip`: source, workflow, tests, and documentation (never install in DH).
 - `contracts.json`: observed behavior used for the next comparison.
-- `version.json`: chosen version, reason, baseline tag and source commit.
-- `SHA256SUMS.txt`: asset hashes.
-
-The workflow does not commit version changes back into the repository or create a commit loop. It stamps the checked-out build and tags the original commit. Build-only runs retain the baseline version for their test artifacts and record `publish: false` in version.json; those artifacts do not represent a new release. Both the release job and publisher enforce this flag. Rerunning an already tagged commit reuses its version and leaves published assets intact; an interrupted draft for that exact commit can still be resumed.
+- `version.json`: chosen version, reason, baseline tag, tag floor, and source commit.
+- `SHA256SUMS.txt`: SHA-256 hashes covering all 5 release artifacts.
 
 ## How versions are chosen
 
-The first stable release is 1.0.0. Later successful builds compare their observed contracts with `contracts.json` from the previous reachable stable release. Older v0.x tags are ignored.
+The workflow scans merged `vX.Y.Z` tags descending to find the latest tag that actually owns a published `contracts.json` release asset (`--base`), while passing the highest merged tag as `--tag-floor` so orphan git tags (such as `v1.0.1`) cannot break baseline download or cause a version collision (`v1.0.0` baseline + `v1.0.1` floor + minor change -> `1.1.0`).
 
-| Highest detected change | Result from 1.2.3 |
+| Highest detected change | Result from `1.2.3` |
 | --- | --- |
-| Existing compatibility observation changed/removed, or a feature observation removed | 2.0.0 |
-| New compatibility/feature observation, or changed feature observation | 1.3.0 |
-| All observations unchanged | 1.2.4 |
+| Existing compatibility observation changed/removed, or feature removed | `2.0.0` |
+| New compatibility/feature observation, or changed feature observation | `1.3.0` |
+| All observations unchanged | `1.2.4` |
 | Any test fails | No release |
 
-Compatibility observations currently cover persisted settings property types, reaction numeric values, countdown/pause behavior and selected detection rules. Feature observations cover HUD text, font acceptance/default, sound and warning defaults. See `tests/ContractSnapshot.cs`.
-
-This deliberately does **not** turn failing tests into major releases. Failures indicate a regression or a test expectation that must be reviewed. For an intentional breaking change, update the implementation and the relevant tests together; once the new tests pass, the changed compatibility observation requests a major version.
-
-Nor can these observations discover every semantic change in arbitrary code. Add a behavioral assertion and a contract observation when adding a capability. UI, native capture and other behavior outside this small contract suite need deliberate classification. Conventional commits provide a second signal that can raise, but never lower, the automatic bump:
-
-```text
-fix: correct timer color                     # patch if contracts unchanged
-feat: add a new HUD mode                     # at least minor
-feat!: replace the settings format           # major
-```
-
-Alternatively put `BREAKING CHANGE: explanation` in a commit body. Only commits touching plugin C# source since the baseline release contribute conventional-commit declarations; one breaking declaration wins over minor/patch changes. A documentation-only `feat:` or breaking-change message cannot raise the next release's version. For eligible source changes with unchanged contracts, patch remains the default. Line counts are not used.
-
-Do not rename/remove contract keys just to tidy tests: removing an observation is intentionally conservative and requests a major version. Keep the contract schema at 1 unless you also implement an explicit migration for the comparator. Do not delete release contract assets: missing baselines stop automatic release rather than guess a version.
+Conventional commits (`feat:`, `type!:`, `BREAKING CHANGE:`) touching `src/**/*.cs` or `src-dh5/**/*.cs` can escalate, but never lower, the bump.
 
 ## Build and test stages
 
-1. Python version-policy tests, including a temporary Git history that verifies 1.0.0 → 1.0.1 → 1.1.0 → 2.0.0 and same-commit reruns.
-2. The 44 C# timer/settings/presentation checks, then generation of actual contract observations. The Python suite also tests SDK hash rejection and extraction failure handling.
-3. Version selection against the preceding stable release and commit declarations.
-4. Download the official DH installer; verify its pinned SHA-256, administratively extract it, and verify SDK 4.2.1.0 by hash and assembly version. The SDK is used only to build and is not redistributed.
-5. Build on Windows with the .NET 10 SDK targeting .NET 8 and warnings treated as errors. Validate Debug outputs, then build Release and run the logic checks again. Normal builds produce the installer automatically: Release leaves only the ZIP in the plugin output directory; Debug keeps loose runtime files and PDB alongside the ZIP.
-6. A Windows smoke executable loads the plugin from the Release ZIP, checks its platform declaration and version, and exercises the control panel in a synthetic host with a wider toolbar. It checks button bounds and minimum width; it does not attach to DDO or emulate LS.
-7. Validate the installer archive's exact three entries and metadata version; produce source and hashes.
-8. In parallel, an Ubuntu job installs msitools, extracts the same hash-pinned SDK, cross-compiles Debug and Release, checks both output layouts and a repeated Release build, and runs the 44 portable C# and 23 Python checks. It cannot execute the Windows UI harness.
-9. Upload the Windows build artifacts. Only after both Windows and Linux jobs succeed and version selection reports eligible code changes (or an exact tagged-commit retry), the default-branch release job publishes a draft with all assets, then makes it public.
-
-The public installer URL may change in place. In that case the build intentionally fails at the hash check. Verify the new upstream installer/SDK and update `ci/sdk-lock.json`; never remove the hash verification just to make the build pass. Release tags and the current default branch should retain their ancestry; avoid rewriting already released history.
+1. Python unit tests (`ci/test_version.py`, `ci/test_get_sdk_linux.py`) verify contract classification, `--tag-floor` orphan-tag handling, dual SDK hash pinning, source-allowlist coverage, zero secret leakage, `--allow-unsigned` gating, and `README.md` settings documentation coverage.
+2. `tests/ReactionTimer.Tests.csproj` runs behavioral checks and emits `dist/contracts.json`.
+3. `ci/version.py` selects the version using `--base` and `--tag-floor`.
+4. `ci/Get-Sdk.ps1` (Windows) and `ci/get_sdk_linux.py` (Ubuntu with `msitools`) verify and extract both `VoK.Sdk 4.2.1.0` and `VoK.Sdk 5.3.0.0` by SHA-256 from `ci/sdk-lock.json`.
+5. Windows builds `ReactionTimer.sln` in `Debug` and `Release`, runs `ci/sign_dh5.py` (ephemeral self-signed `.pfx` + `signtool.exe /fd SHA256` + RSA-SHA256 `.manifest.sig`), runs `tests/WindowsSmoke` on `*-dh4-plugin.zip`, runs `tests/Dh5Smoke` (`--require-signed` when signed) on `*-dh5-plugin.zip`, and runs `ci/package.py`.
+6. In parallel, Ubuntu cross-compiles `ReactionTimer.sln` (`Debug`, `Release`, repeated `Release`), runs `ReactionTimer.Tests`, signs/packages the DH 5 bundle with `osslsigncode` + `openssl` when `DH_AUTHOR_KEY_B64` is available (else `--allow-unsigned`), and runs `tests/Dh5Smoke`.
+7. After both jobs succeed and `publish == true`, the `release` job runs `ci/release.py` to publish the tagged GitHub Release.
 
 ## Local commands
-
-On Windows, with .NET 10 SDK, Python 3 and Dungeon Helper installed:
 
 ```powershell
 python -m unittest discover -s ci -p test_*.py -v
 dotnet run --project tests/ReactionTimer.Tests.csproj -c Release -- --contracts dist/contracts.json
-.\build.ps1 -Version 1.0.0
-# Nonstandard DH installation:
-.\build.ps1 -DungeonHelperDir 'D:\Apps\Dungeon Helper' -Version 1.0.0
+./ci/Get-Sdk.ps1
+.\build.ps1 -DungeonHelperDir $env:DH_SDK_DIR -Dh5SdkDir $env:DH5_SDK_DIR -Version 1.1.0 -AllowUnsigned
 ```
-
-`build.ps1` stamps AssemblyInfo and plugin metadata in the local working copy; CI uses a disposable checkout. The runtime plugin version and diagnostics read the assembly version. The project/package version is passed through MSBuild.
-
-## Validation delivered with this repository
-
-On 2026-09-27, SDK 10.0.401 built the solution on Windows and Ubuntu 22.04 WSL against SDK 4.2.1.0. Debug/Release output checks passed, as did 44 C# checks and 23 Python checks on both operating systems. Visual Studio MSBuild and the Windows synthetic layout harness passed; the harness loaded the Release ZIP. Both SDK acquisition scripts downloaded and extracted the pinned official installer successfully. Workflow linting with actionlint 1.7.12 and source-archive validation passed locally. The GitHub-hosted run and publication remain unverified because this local source folder has no Git checkout or remote. Live DDO/LS behavior cannot be inferred from these tests.
-
-Linux local setup and commands: [development guide](docs/human/DEVELOPMENT.md#linux-cross-compilation). Runtime support remains Windows-only. These build fixes do not change behavioral contracts: expected version impact is patch after an existing release, or the initial 1.0.0 baseline otherwise.
-
-References: [GitHub .NET builds](https://docs.github.com/en/actions/tutorials/build-and-test-code/net), [workflow syntax and permissions](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax), [workflow triggers](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow).

@@ -1,29 +1,18 @@
 # Background and requirements
 
-The timer tracks DDO Alchemist Reaction Spikes and indicates when another spike is needed. The user wanted a Dungeon Helper-only solution with efficient code, readable text, minimal screen obstruction and compatibility with Lossless Scaling. A configuration panel may be larger; the gameplay HUD should contain only compact outlined text.
+The timer tracks DDO Alchemist Reaction Spikes (**Pyrite**, **Orchidium**, **Verdanite**) and tells the player when a spike is expiring or which Spell Primer (**Crimsonite**, **Gildleaf**, **Ceruleite**) breaks their current stance to re-spike.
 
-The plugin uses DH's local game-data provider. It does not automate casting, modify the game buff bar, require RTSS, or depend on a network service. Its optional sound signals an expiry; it does not perform an action in the game.
+## Why dual DH 4 + DH 5 Beta builds exist
 
-## Why this architecture exists
-
-| Observed problem | Resulting design decision |
+| Observed boundary | Resulting design decision |
 | --- | --- |
-| Initial assembly requested SDK 4.3.4, while the installed DH supplied 4.2.1 | Pin and verify the actual supported SDK; do not upgrade merely because NuGet is newer |
-| DH hosted panel vanished with WGC and appeared twice with DXGI | Use an independent top-level HUD inside the DH process, request capture exclusion, and keep it above LS |
-| Text size entered as 30 became 60; other edits also produced unexpected sizes | Replace percentage scaling with validated integer pixels; test save/reopen of 20 and 30 |
-| Large opaque panel obstructed gameplay | Draw per-pixel-alpha text only; show a temporary drag plate during Move |
-| ZIP installed correctly only after non-plugin files were removed | Enforce a three-file install archive; deliver source separately |
-| Opening the panel clipped the DH toolbar and Settings button | Measure the toolbar before DH resizes its host and use automatically sized button rows |
-| Future changes need repeatable builds and versioning | Add Windows CI, contract comparisons, tests and separate release assets |
+| DH 4 uses `.NET 8 Windows` + WinForms (`IDdoPlugin`/`IPluginUI`) and `plugins/ReactionTimer/` ZIPs | Keep `src/` (`net8.0-windows`) targeting pinned `VoK.Sdk 4.2.1.0`, packaged as `*-dh4-plugin.zip` |
+| DH 5 Beta injects `.NET 10 x64` in-process into DX10/11 DDO (`VoK.Sdk.IPlugin` + `ImGuiNET`), drops WinForms, and enforces `PluginTrustGate` | Add `src-dh5/` (`net10.0`, `x64`) sharing portable core logic (`src/*.cs`) packaged & signed at archive root as `*-dh5-plugin.zip` |
+| Orphan `v1.0.1` tag lacked release assets and broke CI baseline download | Scan released tags descending for `contracts.json` while bumping above `--tag-floor` (`v1.1.0`) |
+| Bare countdown digits force foveal saccades; towns/shrines triggered false `RE-SPIKE` flashes | Add analog 6px depletion bar (`ShowDepletionBar`), `SuppressAlertsInTown`, base-stance next-primer hints, and 3 CVD-safe M3 themes (`UiTheme`) |
 
-The 30→60 observation was consistent with the earlier minimum of 60%; the precise cause of the reported 20→180 result was not independently reproduced. The replacement input path eliminates the old percentage control and has exact-value persistence checks.
+## Evidence scope
 
-## Evidence and remaining work
+Automated verification covers compilation with `TreatWarningsAsErrors=true`, portable C# behavioral/contract checks, Python policy/SDK/signing/README sync tests, DH 4 `WindowsSmoke`, DH 5 `Dh5Smoke`, `PluginTrustGate` / `DungeonHelper.App` `InstallFromZip` checks, and Ubuntu cross-compilation/smoke checks in GitHub Actions CI. Live DDO gameplay on Windows, Lossless Scaling WGC/DXGI matrices, and live Linux Wine/Proton gameplay remain separate user integration checks.
 
-The user reported that the independent overlay seemed to work well after stripping non-runtime files from the ZIP. That is useful feedback, not a complete per-mode LS compatibility matrix. A screenshot confirmed panel/toolbar clipping. The subsequent layout correction has not yet been confirmed by another user report.
-
-On 2026-09-27, the 1.0.0 plugin and solution built with SDK 10.0.401 on Windows and Ubuntu 22.04 WSL against SDK 4.2.1.0. Both systems passed 44 C# checks and 23 Python checks, plus Debug/Release output validation. Visual Studio MSBuild and the synthetic Windows toolbar/button layout harness passed; the latter loaded the Release ZIP. Both pinned installer acquisition scripts, workflow linting and source-archive validation also passed. The GitHub-hosted workflow has not run from this folder. Live reaction IDs, refresh timing and both LS capture modes remain integration checks on the target PC; the synthetic layout check is not a user confirmation inside DH.
-
-See [Operations](OPERATIONS.md) for a reproducible verification sequence and [References](REFERENCES.md) for authoritative external sources. Agent counterpart: [Context](../agents/CONTEXT.md).
-
-On 2026-09-30, a configurable re-spike alert was added at the user's request: doubled text with a flashing black background, 5 seconds by default, configurable from 0–60 seconds (0 disables it). The updated solution builds on Windows and Ubuntu WSL with zero warnings/errors and passes 68 pure checks on each. Synthetic Windows checks additionally verify saving the duration without changing font pixels, minimum-size settings layout, and actual native bitmap growth/black/transparency/restoration. Installer layout validation passes. The added behavior/settings contracts indicate a minor release relative to the prior local snapshot; CI still chooses the published version. No live DDO/LS verification is implied.
+See [Operations](OPERATIONS.md) for verification commands and [References](REFERENCES.md) for academic and SDK sources. Agent counterpart: [Context](../agents/CONTEXT.md).

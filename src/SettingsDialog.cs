@@ -12,69 +12,104 @@ internal sealed class SettingsDialog : Form
 {
     private readonly TimerEngine _engine;
     private readonly Settings _settings;
+    private readonly TableLayoutPanel _layout;
+    private readonly FlowLayoutPanel _controlsRow;
+    private readonly FlowLayoutPanel _alertRow;
+    private readonly FlowLayoutPanel _gameplayRow;
+    private readonly FlowLayoutPanel _actionsRow;
+    private readonly FlowLayoutPanel _footerRow;
     private readonly DataGridView _grid = new() { Dock = DockStyle.Fill, ReadOnly = true,
         AllowUserToAddRows = false, AllowUserToDeleteRows = false, RowHeadersVisible = false,
         SelectionMode = DataGridViewSelectionMode.FullRowSelect, MultiSelect = false,
-        AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill };
+        AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill, EnableHeadersVisualStyles = false };
     private readonly ComboBox _reaction = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 110 };
+    private readonly ComboBox _theme = new() { Name = "Theme", DropDownStyle = ComboBoxStyle.DropDownList, Width = 195 };
     private readonly NumericUpDown _warning = new() { Minimum = 0, Maximum = 10, DecimalPlaces = 1, Increment = .5m, Width = 65 };
     private readonly NumericUpDown _alertSeconds = new() { Name = "RespikeAlertSeconds", Minimum = 0, Maximum = 60, Width = 65 };
     private readonly TextBox _size = new() { Width = 55, MaxLength = 3 };
     private readonly CheckBox _sound = new() { Text = "Sound when spike ends", AutoSize = true };
+    private readonly CheckBox _suppressTown = new() { Name = "SuppressAlertsInTown", Text = "Suppress alerts in town / shrines", AutoSize = true };
+    private readonly CheckBox _depletionBar = new() { Name = "ShowDepletionBar", Text = "Show depletion bar on HUD", AutoSize = true };
+    private readonly Label _helpLabel = new() { Dock = DockStyle.Fill, Padding = new Padding(2, 4, 2, 0),
+        Text = "Automatic detection looks for Reaction Spike names (▲ Pyrite → Ceruleite, ◆ Orchidium → Gildleaf, ✚ Verdanite → Crimsonite). Trigger a spike, click Refresh, select its temporary effect and assign a reaction if needed." };
+    private readonly Label _alertHint = new() { Text = "2× text + flashing black background (0 = off)", AutoSize = true, Padding = new Padding(8, 6, 0, 0) };
     private readonly Label _status = new() { Dock = DockStyle.Fill, AutoEllipsis = true, Padding = new Padding(4) };
+    private readonly Button _refreshBtn = new() { Text = "Refresh", AutoSize = true };
+    private readonly Button _assignBtn = new() { Text = "Track selected", AutoSize = true };
+    private readonly Button _removeBtn = new() { Text = "Clear override", AutoSize = true };
+    private readonly Button _exportBtn = new() { Text = "Export diagnostics", AutoSize = true };
+    private readonly Button _saveBtn = new() { Text = "Save", AutoSize = true };
+    private readonly Button _cancelBtn = new() { Text = "Cancel", AutoSize = true, DialogResult = DialogResult.Cancel };
+    private readonly Font _dialogFont = new("Segoe UI", 9);
 
     public SettingsDialog(TimerEngine engine)
     {
         _engine = engine; _settings = engine.GetSettings();
         Text = "Reaction Timer — settings and effects";
-        Size = new Size(760, 540); MinimumSize = new Size(650, 460);
+        Size = new Size(780, 580); MinimumSize = new Size(680, 520);
         StartPosition = FormStartPosition.CenterParent; ShowInTaskbar = false;
         AutoScaleMode = AutoScaleMode.Dpi;
-        Font = new Font("Segoe UI", 9);
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 7, Padding = new Padding(10) };
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 45));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        var controls = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true };
-        _warning.Value = (decimal)_settings.WarningSeconds; _size.Text = _settings.FontSizePixels.ToString(CultureInfo.InvariantCulture);
+        Font = _dialogFont;
+
+        _layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 8, Padding = new Padding(10) };
+        _layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        _layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        _layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        _layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
+        _layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        _layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        _layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
+        _layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+        _controlsRow = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(6, 4, 6, 4) };
+        _warning.Value = (decimal)_settings.WarningSeconds;
+        _size.Text = _settings.FontSizePixels.ToString(CultureInfo.InvariantCulture);
         _sound.Checked = _settings.SoundOnExpiry;
-        controls.Controls.AddRange(new Control[] { new Label { Text = "Warn at (sec)", AutoSize = true, Padding = new Padding(0, 6, 0, 0) }, _warning,
+        _controlsRow.Controls.AddRange(new Control[] {
+            new Label { Text = "Warn at (sec)", AutoSize = true, Padding = new Padding(0, 6, 0, 0) }, _warning,
             new Label { Text = "Font size (px)", AutoSize = true, Padding = new Padding(8, 6, 0, 0) }, _size, _sound });
-        layout.Controls.Add(controls, 0, 0);
+        _layout.Controls.Add(_controlsRow, 0, 0);
+
         _alertSeconds.Value = _settings.RespikeAlertSeconds;
-        var alertControls = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true };
-        alertControls.Controls.AddRange(new Control[] {
-            new Label { Text = "Re-spike alert (sec)", AutoSize = true, Padding = new Padding(0, 6, 0, 0) }, _alertSeconds,
-            new Label { Text = "2× text + flashing black background (0 = off)", AutoSize = true, Padding = new Padding(8, 6, 0, 0) } });
-        layout.Controls.Add(alertControls, 0, 1);
-        layout.Controls.Add(new Label { Dock = DockStyle.Fill, Text = "Automatic detection looks for Reaction Spike names. If needed, trigger a spike, click Refresh, select its temporary effect and assign a reaction. Recent effects remain listed for 60 seconds." }, 0, 2);
+        _alertRow = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(6, 4, 6, 4) };
+        _alertRow.Controls.AddRange(new Control[] {
+            new Label { Text = "Re-spike alert (sec)", AutoSize = true, Padding = new Padding(0, 6, 0, 0) }, _alertSeconds, _alertHint });
+        _layout.Controls.Add(_alertRow, 0, 1);
+
+        _suppressTown.Checked = _settings.SuppressAlertsInTown;
+        _depletionBar.Checked = _settings.ShowDepletionBar;
+        foreach (var t in Enum.GetValues<UiTheme>()) _theme.Items.Add(UiThemePalettes.DisplayName(t));
+        _theme.SelectedIndex = (int)_settings.Theme;
+        _theme.SelectedIndexChanged += (_, _) => ApplyTheme((UiTheme)Math.Max(0, _theme.SelectedIndex));
+
+        _gameplayRow = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(6, 4, 6, 4) };
+        _gameplayRow.Controls.AddRange(new Control[] {
+            _suppressTown, _depletionBar,
+            new Label { Text = "Theme", AutoSize = true, Padding = new Padding(10, 5, 0, 0) }, _theme });
+        _layout.Controls.Add(_gameplayRow, 0, 2);
+
+        _layout.Controls.Add(_helpLabel, 0, 3);
+
         _grid.Columns.Add("did", "Effect DID"); _grid.Columns[0].FillWeight = 23;
         _grid.Columns.Add("name", "Name"); _grid.Columns[1].FillWeight = 70;
         _grid.Columns.Add("duration", "Duration"); _grid.Columns[2].FillWeight = 20;
         _grid.Columns.Add("age", "Last seen"); _grid.Columns[3].FillWeight = 23;
         _grid.Columns.Add("mapping", "Override"); _grid.Columns[4].FillWeight = 24;
-        layout.Controls.Add(_grid, 0, 3);
+        _layout.Controls.Add(_grid, 0, 4);
+
         foreach (var r in Enum.GetValues<Reaction>()) _reaction.Items.Add(r);
         _reaction.SelectedItem = Reaction.Pyrite;
-        var actions = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(0, 5, 0, 0) };
-        var refresh = new Button { Text = "Refresh", AutoSize = true };
-        var assign = new Button { Text = "Track selected", AutoSize = true };
-        var remove = new Button { Text = "Clear override", AutoSize = true };
-        var export = new Button { Text = "Export diagnostics", AutoSize = true };
-        refresh.Click += (_, _) => Populate();
-        assign.Click += (_, _) => SetMapping(true);
-        remove.Click += (_, _) => SetMapping(false);
-        export.Click += (_, _) => Export();
-        actions.Controls.AddRange(new Control[] { refresh, _reaction, assign, remove, export });
-        layout.Controls.Add(actions, 0, 4); layout.Controls.Add(_status, 0, 5);
-        var footer = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, FlowDirection = FlowDirection.RightToLeft };
-        var save = new Button { Text = "Save", AutoSize = true };
-        var cancel = new Button { Text = "Cancel", AutoSize = true, DialogResult = DialogResult.Cancel };
-        save.Click += (_, _) =>
+        _actionsRow = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(0, 5, 0, 0) };
+        _refreshBtn.Click += (_, _) => Populate();
+        _assignBtn.Click += (_, _) => SetMapping(true);
+        _removeBtn.Click += (_, _) => SetMapping(false);
+        _exportBtn.Click += (_, _) => Export();
+        _actionsRow.Controls.AddRange(new Control[] { _refreshBtn, _reaction, _assignBtn, _removeBtn, _exportBtn });
+        _layout.Controls.Add(_actionsRow, 0, 5);
+        _layout.Controls.Add(_status, 0, 6);
+
+        _footerRow = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, FlowDirection = FlowDirection.RightToLeft };
+        _saveBtn.Click += (_, _) =>
         {
             try
             {
@@ -82,15 +117,83 @@ internal sealed class SettingsDialog : Form
                 { _status.Text = "Font size must be a whole number from 10 to 160 pixels. No changes saved."; _size.Focus(); return; }
                 _settings.WarningSeconds = (double)_warning.Value; _settings.FontSizePixels = pixels;
                 _settings.RespikeAlertSeconds = (int)_alertSeconds.Value;
+                _settings.SuppressAlertsInTown = _suppressTown.Checked;
+                _settings.ShowDepletionBar = _depletionBar.Checked;
+                _settings.Theme = (UiTheme)Math.Max(0, _theme.SelectedIndex);
                 // Position/enabled state may have changed through the HUD controls while this dialog was open.
                 var current = _engine.GetSettings(); _settings.HudX = current.HudX; _settings.HudY = current.HudY; _settings.HudEnabled = current.HudEnabled;
                 _settings.SoundOnExpiry = _sound.Checked; _engine.SaveSettings(_settings); DialogResult = DialogResult.OK; Close();
             }
             catch (Exception e) { _status.Text = "Could not save settings: " + e.Message; }
         };
-        footer.Controls.AddRange(new Control[] { save, cancel }); layout.Controls.Add(footer, 0, 6);
-        CancelButton = cancel; AcceptButton = save; Controls.Add(layout); Populate();
+        _footerRow.Controls.AddRange(new Control[] { _saveBtn, _cancelBtn }); _layout.Controls.Add(_footerRow, 0, 7);
+        CancelButton = _cancelBtn; AcceptButton = _saveBtn; Controls.Add(_layout);
+        ApplyTheme(_settings.Theme);
+        Populate();
     }
+
+    private void ApplyTheme(UiTheme theme)
+    {
+        var p = UiThemePalettes.Get(theme);
+        Color canvas = ToColor(p.SurfaceLowest);
+        Color card = ToColor(p.SurfaceLow);
+        Color input = ToColor(p.Surface);
+        Color hover = ToColor(p.SurfaceHigh);
+        Color outline = ToColor(p.Outline);
+        Color primary = ToColor(p.Primary);
+        Color text = ToColor(p.OnSurface);
+        Color muted = ToColor(p.OnSurfaceVariant);
+
+        BackColor = canvas; ForeColor = text;
+        _layout.BackColor = canvas;
+        _controlsRow.BackColor = card;
+        _alertRow.BackColor = card;
+        _gameplayRow.BackColor = card;
+        _actionsRow.BackColor = canvas;
+        _footerRow.BackColor = canvas;
+
+        foreach (Control row in new Control[] { _controlsRow, _alertRow, _gameplayRow })
+            foreach (Control c in row.Controls)
+                if (c is Label or CheckBox) c.ForeColor = text;
+
+        _alertHint.ForeColor = muted;
+        _helpLabel.ForeColor = muted;
+        _status.ForeColor = primary;
+
+        foreach (Control c in new Control[] { _warning, _size, _alertSeconds, _reaction, _theme })
+        {
+            c.BackColor = input;
+            c.ForeColor = text;
+        }
+        foreach (var b in new[] { _refreshBtn, _assignBtn, _removeBtn, _exportBtn, _cancelBtn })
+            StyleButton(b, input, hover, outline, text);
+        StyleButton(_saveBtn, input, hover, primary, text);
+
+        _grid.BackgroundColor = card;
+        _grid.GridColor = outline;
+        _grid.BorderStyle = BorderStyle.FixedSingle;
+        _grid.ColumnHeadersDefaultCellStyle.BackColor = input;
+        _grid.ColumnHeadersDefaultCellStyle.ForeColor = primary;
+        _grid.ColumnHeadersDefaultCellStyle.SelectionBackColor = input;
+        _grid.DefaultCellStyle.BackColor = card;
+        _grid.DefaultCellStyle.ForeColor = text;
+        _grid.DefaultCellStyle.SelectionBackColor = hover;
+        _grid.DefaultCellStyle.SelectionForeColor = text;
+    }
+
+    private static void StyleButton(Button button, Color bg, Color hover, Color border, Color text)
+    {
+        button.FlatStyle = FlatStyle.Flat;
+        button.BackColor = bg;
+        button.ForeColor = text;
+        button.FlatAppearance.BorderColor = border;
+        button.FlatAppearance.BorderSize = 1;
+        button.FlatAppearance.MouseOverBackColor = hover;
+        button.Padding = new Padding(6, 2, 6, 2);
+    }
+
+    private static Color ToColor(ThemeRgb c) => Color.FromArgb(c.R, c.G, c.B);
+
     private void Populate()
     {
         int? selected = _grid.SelectedRows.Count > 0 ? (int?)_grid.SelectedRows[0].Tag : null;
@@ -133,5 +236,11 @@ internal sealed class SettingsDialog : Form
             _status.Text = "Saved: " + path;
         }
         catch (Exception e) { _status.Text = "Export failed: " + e.Message; }
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) _dialogFont.Dispose();
+        base.Dispose(disposing);
     }
 }
