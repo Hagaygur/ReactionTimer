@@ -635,12 +635,12 @@ internal static class Program
             Require(File.Exists(Path.Combine(pluginFolder, "reaction-timer.json")), "Settings file persisted on Initialize");
             Require(mockState.ChatHandler is not null, "/alch chat command registered via OnChatCommand");
 
-            // Trigger deterministic async scan on Dh5TimerEngine (pause background timer first to avoid _tickRunning race)
+            // Trigger deterministic async scan on Dh5TimerEngine (dispose timer first so no queued callback can race _tickRunning)
             var engineProp = pluginType.GetProperty("Engine", BindingFlags.Instance | BindingFlags.NonPublic)!;
             var engine = engineProp.GetValue(plugin)!;
             var engineType = engine.GetType();
             var timer = (System.Threading.Timer)engineType.GetField("_timer", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(engine)!;
-            timer.Change(System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
+            await timer.DisposeAsync();
             var tickRunningField = engineType.GetField("_tickRunning", BindingFlags.Instance | BindingFlags.NonPublic)!;
             var deadline = DateTime.UtcNow.AddSeconds(5);
             while ((int)tickRunningField.GetValue(engine)! != 0 && DateTime.UtcNow < deadline)
