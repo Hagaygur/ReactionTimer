@@ -112,13 +112,35 @@ internal static class Program
                 throw new Exception("Alert end must restore normal size and transparency");
 
             // Also verify active countdown renders depletion bar cleanly while preserving transparent corner
-            var activeView = Activator.CreateInstance(assembly.GetType("VoK.ReactionTimer.TimerView")!,
-                Enum.Parse(assembly.GetType("VoK.ReactionTimer.TimerMode")!, "Active"),
-                Enum.Parse(assembly.GetType("VoK.ReactionTimer.Reaction")!, "Pyrite"), 6.5d, 12d, false, 1L, "")!;
-            Render(activeView, false, false);
-            if (hud.ClientSize.Height <= normalHeight || Corner().A != 0)
-                throw new Exception("Active HUD with depletion bar must expand cleanly and keep transparent corner");
-            Console.WriteLine("PASS respike settings save/layout, depletion bar render, and native HUD size/black-background/transparency transitions");
+            // and exhibits 0 px size/position jitter across 11 proportional-digit ticks (12.0 -> 0.1)
+            var timerModeType = assembly.GetType("VoK.ReactionTimer.TimerMode")!;
+            var reactionType = assembly.GetType("VoK.ReactionTimer.Reaction")!;
+            var timerViewType = assembly.GetType("VoK.ReactionTimer.TimerView")!;
+            var activeMode = Enum.Parse(timerModeType, "Active");
+            var pyriteReaction = Enum.Parse(reactionType, "Pyrite");
+            double[] countdownTicks = { 12.0, 11.9, 11.1, 10.0, 9.9, 9.1, 8.8, 4.7, 2.0, 1.1, 0.1 };
+            Size? firstActiveSize = null;
+            Point? firstActiveLocation = null;
+            foreach (double rem in countdownTicks)
+            {
+                var tickView = Activator.CreateInstance(timerViewType, activeMode, pyriteReaction, rem, 12d, false, 1L, "")!;
+                Render(tickView, false, false);
+                if (Corner().A != 0)
+                    throw new Exception($"Active HUD at {rem:0.0}s lost transparent corner: {Corner()}");
+                if (firstActiveSize is null)
+                {
+                    firstActiveSize = hud.ClientSize;
+                    firstActiveLocation = hud.Location;
+                    if (firstActiveSize.Value.Height <= normalHeight)
+                        throw new Exception("Active HUD with depletion bar must expand cleanly above normal height");
+                }
+                else if (hud.ClientSize != firstActiveSize.Value || hud.Location != firstActiveLocation!.Value)
+                {
+                    throw new Exception(
+                        $"Active HUD twitched at {rem:0.0}s: size {firstActiveSize.Value} -> {hud.ClientSize}, location {firstActiveLocation!.Value} -> {hud.Location}");
+                }
+            }
+            Console.WriteLine("PASS respike settings save/layout, depletion bar render, zero-jitter 11-tick countdown (0 px size/pos delta), and native HUD size/black-background/transparency transitions");
         }
         finally { Directory.Delete(folder, true); }
     }

@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Globalization;
 using System.Media;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
@@ -11,6 +13,80 @@ namespace VoK.ReactionTimer;
 
 internal sealed class HudWindow : Form
 {
+    private static readonly string[] DigitStrings = { "0", "1", "2", "3", "4", "5", "6", "7", "8", "9" };
+
+    private sealed class TabularMetrics
+    {
+        public int FontPixels { get; }
+        public float Ascent { get; }
+        public float Descent { get; }
+        public int LineHeight { get; }
+        public float DigitCellWidth { get; }
+        public float[] DigitInkWidths { get; }
+        public float[] DigitLeftOffsets { get; }
+        public float DotCellWidth { get; }
+        public float DotLeftOffset { get; }
+        public float TildeCellWidth { get; }
+        public float TildeLeftOffset { get; }
+        private readonly Dictionary<string, float> _prefixWidths = new(StringComparer.Ordinal);
+
+        public TabularMetrics(FontFamily family, int fontPixels)
+        {
+            FontPixels = fontPixels;
+            float emHeight = family.GetEmHeight(FontStyle.Bold);
+            Ascent = fontPixels * (family.GetCellAscent(FontStyle.Bold) / emHeight);
+            Descent = fontPixels * (family.GetCellDescent(FontStyle.Bold) / emHeight);
+            LineHeight = Math.Max(1, (int)Math.Ceiling(Ascent + Descent));
+
+            DigitInkWidths = new float[10];
+            var digitLefts = new float[10];
+            float maxDigitWidth = 0f;
+            for (int d = 0; d < 10; d++)
+            {
+                var b = MeasureGlyphBounds(family, fontPixels, DigitStrings[d]);
+                DigitInkWidths[d] = b.Width;
+                digitLefts[d] = b.X;
+                if (b.Width > maxDigitWidth) maxDigitWidth = b.Width;
+            }
+
+            float bearingPad = Math.Max(2f, fontPixels * 0.10f);
+            DigitCellWidth = maxDigitWidth + bearingPad;
+            DigitLeftOffsets = new float[10];
+            for (int d = 0; d < 10; d++)
+                DigitLeftOffsets[d] = -digitLefts[d] + (DigitCellWidth - DigitInkWidths[d]) * 0.5f;
+
+            var dotBounds = MeasureGlyphBounds(family, fontPixels, ".");
+            DotCellWidth = dotBounds.Width + Math.Max(2f, fontPixels * 0.12f);
+            DotLeftOffset = -dotBounds.X + (DotCellWidth - dotBounds.Width) * 0.5f;
+
+            var tildeBounds = MeasureGlyphBounds(family, fontPixels, "~");
+            TildeCellWidth = tildeBounds.Width + bearingPad;
+            TildeLeftOffset = -tildeBounds.X + (TildeCellWidth - tildeBounds.Width) * 0.5f;
+        }
+
+        public float GetPrefixWidth(string prefix, FontFamily family, Graphics measureGraphics, StringFormat measureFormat)
+        {
+            if (_prefixWidths.TryGetValue(prefix, out float cached))
+                return cached;
+
+            using var font = new Font(family, FontPixels, FontStyle.Bold, GraphicsUnit.Pixel);
+            float measured = measureGraphics.MeasureString(prefix, font, PointF.Empty, measureFormat).Width;
+            using var path = new GraphicsPath();
+            path.AddString(prefix, family, (int)FontStyle.Bold, FontPixels, PointF.Empty, StringFormat.GenericTypographic);
+            float inkRight = path.PointCount > 0 ? path.GetBounds().Right : 0f;
+            float width = Math.Max(measured, inkRight + Math.Max(4f, FontPixels * 0.35f));
+            _prefixWidths[prefix] = width;
+            return width;
+        }
+
+        private static RectangleF MeasureGlyphBounds(FontFamily family, int fontPixels, string glyph)
+        {
+            using var gp = new GraphicsPath();
+            gp.AddString(glyph, family, (int)FontStyle.Bold, fontPixels, PointF.Empty, StringFormat.GenericTypographic);
+            return gp.PointCount > 0 ? gp.GetBounds() : RectangleF.Empty;
+        }
+    }
+
     private readonly TimerEngine _engine;
     private readonly ConcurrentQueue<HudCommand> _commands;
     private readonly Action<string> _status;
@@ -21,6 +97,10 @@ internal sealed class HudWindow : Form
     private double _previewDuration = 15;
     private readonly FontFamily _family = new("Segoe UI");
     private readonly Font _editFont = new("Segoe UI", 11, FontStyle.Regular, GraphicsUnit.Pixel);
+    private readonly Bitmap _measureBitmap = new(1, 1);
+    private readonly Graphics _measureGraphics;
+    private readonly StringFormat _measureFormat;
+    private readonly Dictionary<int, TabularMetrics> _metricsCache = new();
     private Settings _settings = new();
     private int _revision = -1;
     private double _previewStart = double.NegativeInfinity, _editUntil, _nextRaise, _nextScreenCheck, _lastMove, _lastErrorLog = -100;
@@ -35,6 +115,11 @@ internal sealed class HudWindow : Form
     public HudWindow(TimerEngine engine, ConcurrentQueue<HudCommand> commands, Action<string> status)
     {
         _engine = engine; _commands = commands; _status = status;
+        _measureGraphics = Graphics.FromImage(_measureBitmap);
+        _measureFormat = new StringFormat(StringFormat.GenericTypographic)
+        {
+            FormatFlags = StringFormat.GenericTypographic.FormatFlags | StringFormatFlags.MeasureTrailingSpaces
+        };
         Text = "Alchemist Reaction Timer HUD"; FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false; TopMost = true; AutoScaleMode = AutoScaleMode.None;
         StartPosition = FormStartPosition.Manual;
@@ -203,14 +288,77 @@ internal sealed class HudWindow : Form
         float glyphSize = drawGlyph ? Math.Max(8f, fontPixels * 0.52f) : 0f;
         float glyphAdvance = drawGlyph ? glyphSize + Math.Max(5f, fontPixels * 0.22f) : 0f;
 
+        var metrics = GetTabularMetrics(fontPixels);
+        int lineHeight = metrics.LineHeight;
+        const float topY = 5f;
+        bool isTabular = !townPaused && view.Mode == TimerMode.Active &&
+            view.Remaining.HasValue && double.IsFinite(view.Remaining.Value) && view.Remaining.Value >= 0;
+
         using var path = new GraphicsPath();
-        path.AddString(text, _family, (int)FontStyle.Bold, fontPixels, PointF.Empty, StringFormat.GenericTypographic);
-        var bounds = path.GetBounds();
-        using (var shift = new Matrix())
+        float textWidth;
+        if (isTabular)
         {
-            shift.Translate(5 + glyphAdvance - bounds.X, 5 - bounds.Y);
-            path.Transform(shift);
+            string prefix = (demo ? "PREVIEW" : view.Reaction == Reaction.Any ? "SPIKE" : view.Reaction.ToString().ToUpperInvariant()) + "  ";
+            string formatted = view.Remaining!.Value.ToString("0.0", CultureInfo.InvariantCulture);
+            int dotIdx = formatted.IndexOf('.');
+            string intPart = dotIdx >= 0 ? formatted[..dotIdx] : formatted;
+            string fracPart = dotIdx >= 0 ? formatted[(dotIdx + 1)..] : "0";
+            int intCols = Math.Max(2, intPart.Length);
+
+            float textOriginX = 5f + glyphAdvance;
+            float prefixWidth = metrics.GetPrefixWidth(prefix, _family, _measureGraphics, _measureFormat);
+            path.AddString(prefix, _family, (int)FontStyle.Bold, fontPixels, new PointF(textOriginX, topY), StringFormat.GenericTypographic);
+
+            float x = textOriginX + prefixWidth;
+            if (view.Estimated)
+            {
+                path.AddString("~", _family, (int)FontStyle.Bold, fontPixels, new PointF(x + metrics.TildeLeftOffset, topY), StringFormat.GenericTypographic);
+                x += metrics.TildeCellWidth;
+            }
+
+            x += (intCols - intPart.Length) * metrics.DigitCellWidth;
+            for (int i = 0; i < intPart.Length; i++)
+            {
+                char ch = intPart[i];
+                if (ch is >= '0' and <= '9')
+                {
+                    int d = ch - '0';
+                    path.AddString(DigitStrings[d], _family, (int)FontStyle.Bold, fontPixels, new PointF(x + metrics.DigitLeftOffsets[d], topY), StringFormat.GenericTypographic);
+                }
+                x += metrics.DigitCellWidth;
+            }
+
+            path.AddString(".", _family, (int)FontStyle.Bold, fontPixels, new PointF(x + metrics.DotLeftOffset, topY), StringFormat.GenericTypographic);
+            x += metrics.DotCellWidth;
+
+            for (int i = 0; i < fracPart.Length; i++)
+            {
+                char ch = fracPart[i];
+                if (ch is >= '0' and <= '9')
+                {
+                    int d = ch - '0';
+                    path.AddString(DigitStrings[d], _family, (int)FontStyle.Bold, fontPixels, new PointF(x + metrics.DigitLeftOffsets[d], topY), StringFormat.GenericTypographic);
+                }
+                x += metrics.DigitCellWidth;
+            }
+
+            textWidth = x - textOriginX;
         }
+        else
+        {
+            path.AddString(text, _family, (int)FontStyle.Bold, fontPixels, new PointF(0f, topY), StringFormat.GenericTypographic);
+            var bounds = path.PointCount > 0 ? path.GetBounds() : RectangleF.Empty;
+            textWidth = bounds.Width;
+            if (!bounds.IsEmpty)
+            {
+                using var shift = new Matrix();
+                shift.Translate(5f + glyphAdvance - bounds.X, 0f);
+                path.Transform(shift);
+            }
+        }
+
+        const int barHeight = 6;
+        int barExtra = showBar ? barHeight + 5 : 0;
 
         using GraphicsPath? hintPath = primerHint is not null ? new GraphicsPath() : null;
         float hintHeight = 0;
@@ -218,32 +366,31 @@ internal sealed class HudWindow : Form
         if (hintPath is not null && primerHint is not null)
         {
             float hintPx = Math.Max(11f, fontPixels * 0.42f);
-            hintPath.AddString(primerHint, _family, (int)FontStyle.Bold, hintPx, PointF.Empty, StringFormat.GenericTypographic);
-            var hb = hintPath.GetBounds();
+            float emHeight = _family.GetEmHeight(FontStyle.Bold);
+            int hintLineHeight = Math.Max(1, (int)Math.Ceiling(hintPx * ((_family.GetCellAscent(FontStyle.Bold) + _family.GetCellDescent(FontStyle.Bold)) / emHeight)));
+            float hintTopY = topY + lineHeight + 4f + barExtra;
+            hintPath.AddString(primerHint, _family, (int)FontStyle.Bold, hintPx, new PointF(0f, hintTopY), StringFormat.GenericTypographic);
+            var hb = hintPath.PointCount > 0 ? hintPath.GetBounds() : RectangleF.Empty;
             hintWidth = hb.Width;
-            hintHeight = hb.Height + 4;
-            using var hShift = new Matrix();
-            hShift.Translate(5 - hb.X, 5 + bounds.Height + 4 - hb.Y);
-            hintPath.Transform(hShift);
+            hintHeight = hintLineHeight + 4f;
+            if (!hb.IsEmpty)
+            {
+                using var hShift = new Matrix();
+                hShift.Translate(5f - hb.X, 0f);
+                hintPath.Transform(hShift);
+            }
         }
 
-        const int barHeight = 6;
-        int barExtra = showBar ? barHeight + 5 : 0;
         int hintExtra = hintPath is not null ? (int)Math.Ceiling(hintHeight) : 0;
-        int contentWidth = (int)Math.Ceiling(Math.Max(bounds.Width + glyphAdvance, hintWidth));
+        int contentWidth = (int)Math.Ceiling(Math.Max(textWidth + glyphAdvance, hintWidth));
         int width = Math.Max(_editing ? 230 : 1, contentWidth + 10);
-        int height = (int)Math.Ceiling(bounds.Height) + 10 + barExtra + hintExtra + (_editing ? 20 : 0);
+        int height = lineHeight + 10 + barExtra + hintExtra + (_editing ? 20 : 0);
 
         bool sizeChanged = _surface.Size.Width != width || _surface.Size.Height != height;
         _surface.Resize(width, height);
-        _movingProgrammatically = true;
-        try
-        {
-            ClientSize = _surface.Size;
-            if (_needsPosition || (sizeChanged && !_editing)) Location = HudPresentation.Position(_screen, Size, _settings.HudX, _settings.HudY);
-        }
-        finally { _movingProgrammatically = false; }
-        _needsPosition = false;
+        Point targetLocation = (_needsPosition || (sizeChanged && !_editing))
+            ? HudPresentation.Position(_screen, _surface.Size, _settings.HudX, _settings.HudY)
+            : Location;
 
         var g = _surface.Graphics!;
         g.CompositingMode = CompositingMode.SourceCopy; g.Clear(Color.Transparent);
@@ -265,7 +412,7 @@ internal sealed class HudWindow : Form
 
         if (drawGlyph)
         {
-            float cy = 5 + bounds.Height * 0.5f;
+            float cy = topY + lineHeight * 0.5f;
             DrawCvdGlyph(g, view.Reaction, 5 + glyphSize * 0.5f, cy, glyphSize * 0.48f, outline, fill);
         }
 
@@ -274,7 +421,7 @@ internal sealed class HudWindow : Form
         if (showBar)
         {
             float barX = 5f;
-            float barY = 5f + bounds.Height + 4f;
+            float barY = topY + lineHeight + 4f;
             float barW = Math.Max(20f, width - 10f);
             using var trackBrush = new SolidBrush(Color.FromArgb(215, palette.SurfaceLowest.R, palette.SurfaceLowest.G, palette.SurfaceLowest.B));
             using var borderPen = new Pen(Color.FromArgb(205, palette.Outline.R, palette.Outline.G, palette.Outline.B), 1f);
@@ -299,8 +446,29 @@ internal sealed class HudWindow : Form
         }
 
         g.Flush();
-        _surface.Present(Handle, Location);
+        _surface.Present(Handle, targetLocation);
+        if (ClientSize != _surface.Size || Location != targetLocation)
+        {
+            _movingProgrammatically = true;
+            try
+            {
+                if (ClientSize != _surface.Size) ClientSize = _surface.Size;
+                if (Location != targetLocation) Location = targetLocation;
+            }
+            finally { _movingProgrammatically = false; }
+        }
+        _needsPosition = false;
         _lastRenderKey = key;
+    }
+
+    private TabularMetrics GetTabularMetrics(int fontPixels)
+    {
+        if (_metricsCache.TryGetValue(fontPixels, out var cached))
+            return cached;
+        if (_metricsCache.Count >= 64) _metricsCache.Clear();
+        var created = new TabularMetrics(_family, fontPixels);
+        _metricsCache[fontPixels] = created;
+        return created;
     }
 
     private static void DrawCvdGlyph(Graphics g, Reaction reaction, float cx, float cy, float r, Pen outline, Brush fill)
@@ -336,7 +504,16 @@ internal sealed class HudWindow : Form
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { _tick.Stop(); _tick.Dispose(); _surface.Dispose(); _family.Dispose(); _editFont.Dispose(); }
+        if (disposing)
+        {
+            _tick.Stop(); _tick.Dispose();
+            _surface.Dispose();
+            _family.Dispose();
+            _editFont.Dispose();
+            _measureGraphics.Dispose();
+            _measureBitmap.Dispose();
+            _measureFormat.Dispose();
+        }
         base.Dispose(disposing);
     }
 }

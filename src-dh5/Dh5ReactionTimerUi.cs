@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Numerics;
@@ -10,6 +11,44 @@ internal sealed class Dh5ReactionTimerUi
 {
     private const string ControlWindowTitle = "Alch Reaction Timer###" + Dh5Plugin.PluginGuid;
     private static readonly Vector2 DefaultControlWindowSize = new(560f, 470f);
+    private static readonly string[] DigitStrings = { "0", "1", "2", "3", "4", "5", "6", "7", "8", "9" };
+    private static readonly Dictionary<(uint FontId, float Density, int FontPx), TabularMetrics> s_tabularCache = new();
+
+    internal sealed class TabularMetrics
+    {
+        public float DigitCellW { get; }
+        public float[] DigitWidths { get; }
+        public float DotW { get; }
+        public float TildeW { get; }
+        public float LineH { get; }
+        private readonly Dictionary<string, float> _prefixWidths = new(StringComparer.Ordinal);
+
+        public TabularMetrics(float digitCellW, float[] digitWidths, float dotW, float tildeW, float lineH)
+        {
+            DigitCellW = digitCellW;
+            DigitWidths = digitWidths;
+            DotW = dotW;
+            TildeW = tildeW;
+            LineH = lineH;
+        }
+
+        public float MeasureCountdownWidth(double remaining, bool estimated)
+        {
+            if (!TrySplitCountdown(remaining, out string intPart, out string fracPart))
+                return 0f;
+            int intCols = Math.Max(2, intPart.Length);
+            return (estimated ? TildeW : 0f) + intCols * DigitCellW + DotW + fracPart.Length * DigitCellW;
+        }
+
+        public float GetPrefixWidth(string prefix, Func<string, Vector2> measure)
+        {
+            if (_prefixWidths.TryGetValue(prefix, out float cached))
+                return cached;
+            float w = measure(prefix).X;
+            _prefixWidths[prefix] = w;
+            return w;
+        }
+    }
 
     // Semantic CVD-safe reaction & alert accents (constant across all 3 DDO x M3 themes so alerts always pop)
     private static readonly Vector4 AstralBlue = Hex(0x4D, 0xA6, 0xFF, 1.00f);
@@ -164,7 +203,7 @@ internal sealed class Dh5ReactionTimerUi
 
         Vector2 hudSize = s.HudMode == HudDisplayMode.RadialDonut
             ? MeasureRadialDonut(fontPx, primerHint, showSp, editing)
-            : MeasureCompactPill(fontPx, text, view, s, townPaused, primerHint, showSp, editing);
+            : MeasureCompactPill(fontPx, text, view, demo, s, townPaused, primerHint, showSp, editing);
 
         float posX = vpPos.X + (float)Math.Clamp(s.HudX, 0, 1) * Math.Max(0, vpSize.X - hudSize.X);
         float posY = vpPos.Y + (float)Math.Clamp(s.HudY, 0, 1) * Math.Max(0, vpSize.Y - hudSize.Y);
@@ -174,7 +213,7 @@ internal sealed class Dh5ReactionTimerUi
         if (s.HudMode == HudDisplayMode.RadialDonut)
             DrawRadialDonut(dl, hudMin, hudSize, fontPx, view, s, palette, alert, accent, alpha, pulse, townPaused, primerHint, showSp, spFraction, editing);
         else
-            DrawCompactPill(dl, hudMin, hudSize, fontPx, text, view, s, palette, alert, accent, alpha, pulse, townPaused, primerHint, showSp, spFraction, editing);
+            DrawCompactPill(dl, hudMin, hudSize, fontPx, text, view, demo, s, palette, alert, accent, alpha, pulse, townPaused, primerHint, showSp, spFraction, editing);
 
         if (editing)
         {
@@ -193,10 +232,149 @@ internal sealed class Dh5ReactionTimerUi
         finally { ImGui.PopFont(); }
     }
 
-    private static Vector2 MeasureCompactPill(int fontPx, string text, TimerView view, Settings s, bool townPaused, string? primerHint, bool showSp, bool editing)
+    internal static bool IsTabularCountdown(TimerView view, bool townPaused) =>
+        !townPaused && view.Mode == TimerMode.Active && view.Remaining.HasValue &&
+        double.IsFinite(view.Remaining.Value) && view.Remaining.Value >= 0;
+
+    internal static string CountdownPrefix(TimerView view, bool demo) =>
+        (demo ? "PREVIEW" : view.Reaction == Reaction.Any ? "SPIKE" : view.Reaction.ToString().ToUpperInvariant()) + "  ";
+
+    internal static bool TrySplitCountdown(double remaining, out string intPart, out string fracPart)
     {
-        var font = ImGui.GetFont();
-        Vector2 textSize = CalcTextSizeAt(font, fontPx, text);
+        if (!double.IsFinite(remaining) || remaining < 0)
+        {
+            intPart = "";
+            fracPart = "";
+            return false;
+        }
+        string formatted = remaining.ToString("0.0", CultureInfo.InvariantCulture);
+        int dotIdx = formatted.IndexOf('.');
+        intPart = dotIdx >= 0 ? formatted[..dotIdx] : formatted;
+        fracPart = dotIdx >= 0 ? formatted[(dotIdx + 1)..] : "0";
+        return true;
+    }
+
+    internal static TabularMetrics MeasureTabularMetrics(Func<string, Vector2> measure)
+    {
+        var digitWidths = new float[10];
+        float maxDigitW = 0f;
+        float maxLineH = 0f;
+        for (int d = 0; d < 10; d++)
+        {
+            Vector2 sz = measure(DigitStrings[d]);
+            digitWidths[d] = sz.X;
+            if (sz.X > maxDigitW) maxDigitW = sz.X;
+            if (sz.Y > maxLineH) maxLineH = sz.Y;
+        }
+        Vector2 dotSz = measure(".");
+        Vector2 tildeSz = measure("~");
+        Vector2 labelSz = measure("PYRITE");
+        if (dotSz.Y > maxLineH) maxLineH = dotSz.Y;
+        if (tildeSz.Y > maxLineH) maxLineH = tildeSz.Y;
+        if (labelSz.Y > maxLineH) maxLineH = labelSz.Y;
+        return new TabularMetrics(maxDigitW, digitWidths, dotSz.X, tildeSz.X, MathF.Ceiling(maxLineH));
+    }
+
+    private static TabularMetrics GetTabularMetrics(ImFontPtr font, int fontPx)
+    {
+        var key = (font.FontId, font.CurrentRasterizerDensity, fontPx);
+        if (s_tabularCache.TryGetValue(key, out var cached))
+            return cached;
+
+        ImGui.PushFont(font, fontPx);
+        try
+        {
+            var created = MeasureTabularMetrics(static t => ImGui.CalcTextSize(t));
+            if (s_tabularCache.Count >= 64) s_tabularCache.Clear();
+            s_tabularCache[key] = created;
+            return created;
+        }
+        finally
+        {
+            ImGui.PopFont();
+        }
+    }
+
+    internal static float ComputeCountdownDotOffsetX(double remaining, bool estimated, TabularMetrics metrics)
+    {
+        if (!TrySplitCountdown(remaining, out string intPart, out _))
+            return 0f;
+        int intCols = Math.Max(2, intPart.Length);
+        return (estimated ? metrics.TildeW : 0f) + intCols * metrics.DigitCellW;
+    }
+
+    private static void DrawTabularCountdown(
+        ImDrawListPtr dl, ImFontPtr font, float fontPx, Vector2 origin,
+        uint col, uint? shadowCol, double remaining, bool estimated, TabularMetrics metrics)
+    {
+        if (!TrySplitCountdown(remaining, out string intPart, out string fracPart))
+            return;
+
+        int intCols = Math.Max(2, intPart.Length);
+        float x = origin.X;
+        float y = origin.Y;
+
+        if (estimated)
+        {
+            DrawCellGlyph(dl, font, fontPx, x, y, metrics.TildeW, metrics.TildeW, "~", col, shadowCol);
+            x += metrics.TildeW;
+        }
+
+        x += (intCols - intPart.Length) * metrics.DigitCellW;
+        for (int i = 0; i < intPart.Length; i++)
+        {
+            char ch = intPart[i];
+            if (ch is >= '0' and <= '9')
+            {
+                int d = ch - '0';
+                DrawCellGlyph(dl, font, fontPx, x, y, metrics.DigitCellW, metrics.DigitWidths[d], DigitStrings[d], col, shadowCol);
+            }
+            x += metrics.DigitCellW;
+        }
+
+        DrawCellGlyph(dl, font, fontPx, x, y, metrics.DotW, metrics.DotW, ".", col, shadowCol);
+        x += metrics.DotW;
+
+        for (int i = 0; i < fracPart.Length; i++)
+        {
+            char ch = fracPart[i];
+            if (ch is >= '0' and <= '9')
+            {
+                int d = ch - '0';
+                DrawCellGlyph(dl, font, fontPx, x, y, metrics.DigitCellW, metrics.DigitWidths[d], DigitStrings[d], col, shadowCol);
+            }
+            x += metrics.DigitCellW;
+        }
+    }
+
+    private static void DrawCellGlyph(
+        ImDrawListPtr dl, ImFontPtr font, float fontPx, float cellX, float y,
+        float cellW, float glyphW, string glyph, uint col, uint? shadowCol)
+    {
+        float gx = cellX + (cellW - glyphW) * 0.5f;
+        if (shadowCol.HasValue)
+            dl.AddText(font, fontPx, new Vector2(gx + 1.5f, y + 1.5f), shadowCol.Value, glyph);
+        dl.AddText(font, fontPx, new Vector2(gx, y), col, glyph);
+    }
+
+    internal static Vector2 MeasureCompactPillLayout(
+        int fontPx, string text, TimerView view, bool demo, Settings s, bool townPaused,
+        string? primerHint, bool showSp, bool editing, TabularMetrics metrics,
+        Func<string, Vector2> measureText, Func<float, string, Vector2> measureHintText)
+    {
+        bool isTabular = IsTabularCountdown(view, townPaused);
+        float textW;
+        if (isTabular)
+        {
+            string prefix = CountdownPrefix(view, demo);
+            float prefixW = metrics.GetPrefixWidth(prefix, measureText);
+            textW = prefixW + metrics.MeasureCountdownWidth(view.Remaining!.Value, view.Estimated);
+        }
+        else
+        {
+            textW = measureText(text).X;
+        }
+        float textH = metrics.LineH;
 
         float padX = Math.Max(12f, fontPx * 0.42f);
         float padY = Math.Max(8f, fontPx * 0.28f);
@@ -211,18 +389,28 @@ internal sealed class Dh5ReactionTimerUi
         if (primerHint is not null)
         {
             float hintPx = Math.Max(12f, fontPx * 0.44f);
-            var hs = CalcTextSizeAt(font, hintPx, primerHint);
+            var hs = measureHintText(hintPx, primerHint);
             hintW = hs.X;
             hintH = hs.Y + 4f;
         }
 
-        float w = Math.Max(editing ? 290f : 120f, Math.Max(glyphW + textSize.X, hintW) + padX * 2f);
-        float h = padY * 2f + textSize.Y + (showBar ? 11f : 0f) + (showSp ? 8f : 0f) + hintH + (editing ? 22f : 0f);
+        float w = Math.Max(editing ? 290f : 120f, Math.Max(glyphW + textW, hintW) + padX * 2f);
+        float h = padY * 2f + textH + (showBar ? 11f : 0f) + (showSp ? 8f : 0f) + hintH + (editing ? 22f : 0f);
         return new Vector2(MathF.Ceiling(w), MathF.Ceiling(h));
     }
 
+    private static Vector2 MeasureCompactPill(int fontPx, string text, TimerView view, bool demo, Settings s, bool townPaused, string? primerHint, bool showSp, bool editing)
+    {
+        var font = ImGui.GetFont();
+        var metrics = GetTabularMetrics(font, fontPx);
+        return MeasureCompactPillLayout(
+            fontPx, text, view, demo, s, townPaused, primerHint, showSp, editing, metrics,
+            t => CalcTextSizeAt(font, fontPx, t),
+            (px, t) => CalcTextSizeAt(font, px, t));
+    }
+
     private static void DrawCompactPill(
-        ImDrawListPtr dl, Vector2 pMin, Vector2 size, int fontPx, string text, TimerView view, Settings s,
+        ImDrawListPtr dl, Vector2 pMin, Vector2 size, int fontPx, string text, TimerView view, bool demo, Settings s,
         UiThemePalette palette, HudAlertFrame alert, Vector4 accent, float alpha, float pulse, bool townPaused,
         string? primerHint, bool showSp, float spFraction, bool editing)
     {
@@ -249,7 +437,8 @@ internal sealed class Dh5ReactionTimerUi
         float padX = Math.Max(12f, fontPx * 0.42f);
         float padY = Math.Max(8f, fontPx * 0.28f);
         var font = ImGui.GetFont();
-        Vector2 textSize = CalcTextSizeAt(font, fontPx, text);
+        var metrics = GetTabularMetrics(font, fontPx);
+        float textH = metrics.LineH;
 
         float cursorX = pMin.X + padX;
         float cursorY = pMin.Y + padY;
@@ -257,14 +446,27 @@ internal sealed class Dh5ReactionTimerUi
         if (!townPaused && view.Reaction != Reaction.Any)
         {
             float glyphR = Math.Max(5f, fontPx * 0.26f);
-            DrawVectorCvdGlyph(dl, view.Reaction, new Vector2(cursorX + glyphR, cursorY + textSize.Y * 0.5f), glyphR, U32(accent));
+            DrawVectorCvdGlyph(dl, view.Reaction, new Vector2(cursorX + glyphR, cursorY + textH * 0.5f), glyphR, U32(accent));
             cursorX += glyphR * 2f + Math.Max(6f, fontPx * 0.22f);
         }
 
-        dl.AddText(font, fontPx, new Vector2(cursorX + 1.5f, cursorY + 1.5f), U32(new Vector4(0, 0, 0, 0.85f)), text);
-        dl.AddText(font, fontPx, new Vector2(cursorX, cursorY), U32(accent), text);
+        uint shadowU32 = U32(new Vector4(0, 0, 0, 0.85f));
+        uint accentU32 = U32(accent);
+        if (IsTabularCountdown(view, townPaused))
+        {
+            string prefix = CountdownPrefix(view, demo);
+            dl.AddText(font, fontPx, new Vector2(cursorX + 1.5f, cursorY + 1.5f), shadowU32, prefix);
+            dl.AddText(font, fontPx, new Vector2(cursorX, cursorY), accentU32, prefix);
+            float prefixW = metrics.GetPrefixWidth(prefix, t => CalcTextSizeAt(font, fontPx, t));
+            DrawTabularCountdown(dl, font, fontPx, new Vector2(cursorX + prefixW, cursorY), accentU32, shadowU32, view.Remaining!.Value, view.Estimated, metrics);
+        }
+        else
+        {
+            dl.AddText(font, fontPx, new Vector2(cursorX + 1.5f, cursorY + 1.5f), shadowU32, text);
+            dl.AddText(font, fontPx, new Vector2(cursorX, cursorY), accentU32, text);
+        }
 
-        float rowY = cursorY + textSize.Y + 5f;
+        float rowY = cursorY + textH + 5f;
         float innerW = Math.Max(20f, size.X - padX * 2f);
 
         bool showBar = s.ShowDepletionBar && !townPaused &&
@@ -303,12 +505,18 @@ internal sealed class Dh5ReactionTimerUi
         if (editing) DrawEditFooter(dl, pMin, size, primary);
     }
 
-    private static Vector2 MeasureRadialDonut(int fontPx, string? primerHint, bool showSp, bool editing)
+    internal static Vector2 MeasureRadialDonut(int fontPx, string? primerHint, bool showSp, bool editing)
     {
         float diameter = Math.Clamp(fontPx * 3.1f, 84f, 240f);
         float w = Math.Max(editing ? 290f : 104f, diameter + 24f);
         float extraH = (showSp ? 10f : 0f) + (primerHint is not null ? Math.Max(16f, fontPx * 0.5f) : 0f) + (editing ? 24f : 0f);
         return new Vector2(MathF.Ceiling(w), MathF.Ceiling(diameter + 20f + extraH));
+    }
+
+    internal static Vector2 ComputeRadialCountdownOrigin(Vector2 center, double remaining, bool estimated, TabularMetrics numMetrics)
+    {
+        float totalW = numMetrics.MeasureCountdownWidth(remaining, estimated);
+        return new Vector2(center.X - totalW * 0.5f, center.Y - numMetrics.LineH * 0.35f);
     }
 
     private static void DrawRadialDonut(
@@ -366,31 +574,41 @@ internal sealed class Dh5ReactionTimerUi
         }
 
         var font = ImGui.GetFont();
-        string centerText = townPaused
-            ? "TOWN"
-            : view.Mode switch
-            {
-                TimerMode.Active when view.Remaining.HasValue => (view.Estimated ? "~" : "") + view.Remaining.Value.ToString("0.0", CultureInfo.InvariantCulture),
-                TimerMode.Active => "ACT",
-                TimerMode.Paused => "PAUSE",
-                TimerMode.Expired => "SPIKE!",
-                TimerMode.Error => "ERR",
-                _ => "READY"
-            };
-        float numPx = Math.Clamp(fontPx * 0.95f, 12f, 96f);
-        Vector2 numSize = CalcTextSizeAt(font, numPx, centerText);
+        int numPx = (int)MathF.Round(Math.Clamp(fontPx * 0.95f, 12f, 96f));
+        var numMetrics = GetTabularMetrics(font, numPx);
+        float numH = numMetrics.LineH;
 
         if (!townPaused && view.Reaction != Reaction.Any)
         {
             float glyphR = Math.Clamp(radius * 0.16f, 4f, 12f);
-            DrawVectorCvdGlyph(dl, view.Reaction, new Vector2(center.X, center.Y - numSize.Y * 0.55f - glyphR * 0.6f), glyphR, U32(accent));
+            DrawVectorCvdGlyph(dl, view.Reaction, new Vector2(center.X, center.Y - numH * 0.55f - glyphR * 0.6f), glyphR, U32(accent));
         }
-        dl.AddText(font, numPx, new Vector2(center.X - numSize.X * 0.5f, center.Y - numSize.Y * 0.35f), U32(accent), centerText);
+
+        if (IsTabularCountdown(view, townPaused))
+        {
+            Vector2 numOrigin = ComputeRadialCountdownOrigin(center, view.Remaining!.Value, view.Estimated, numMetrics);
+            DrawTabularCountdown(dl, font, numPx, numOrigin, U32(accent), null, view.Remaining.Value, view.Estimated, numMetrics);
+        }
+        else
+        {
+            string centerText = townPaused
+                ? "TOWN"
+                : view.Mode switch
+                {
+                    TimerMode.Active => "ACT",
+                    TimerMode.Paused => "PAUSE",
+                    TimerMode.Expired => "SPIKE!",
+                    TimerMode.Error => "ERR",
+                    _ => "READY"
+                };
+            Vector2 numSize = CalcTextSizeAt(font, numPx, centerText);
+            dl.AddText(font, numPx, new Vector2(center.X - numSize.X * 0.5f, center.Y - numH * 0.35f), U32(accent), centerText);
+        }
 
         string tag = townPaused ? "PAUSED" : HudPresentation.ShortTag(view.Reaction);
         float tagPx = Math.Max(11f, numPx * 0.42f);
         Vector2 tagSize = CalcTextSizeAt(font, tagPx, tag);
-        dl.AddText(font, tagPx, new Vector2(center.X - tagSize.X * 0.5f, center.Y + numSize.Y * 0.48f), U32(muted), tag);
+        dl.AddText(font, tagPx, new Vector2(center.X - tagSize.X * 0.5f, center.Y + numH * 0.48f), U32(muted), tag);
 
         float rowY = pMin.Y + 12f + diameter;
         if (showSp)

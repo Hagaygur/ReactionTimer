@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Numerics;
 using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
@@ -28,6 +29,37 @@ internal static class Program
         "System.Windows.Forms.Primitives",
         "System.Media",
         "System.Windows.Extensions"
+    };
+
+    // DH 5 host security verifier constraints (mirrors DungeonHelper.dll 퉧.퉍)
+    private static readonly HashSet<string> ForbiddenPInvokes = new(StringComparer.Ordinal)
+    {
+        "ReadProcessMemory", "WriteProcessMemory", "OpenProcess",
+        "VirtualAllocEx", "VirtualProtectEx", "CreateRemoteThread",
+        "NtReadVirtualMemory", "NtWriteVirtualMemory",
+        "SetWindowsHookExA", "SetWindowsHookExW",
+        "LoadLibraryA", "LoadLibraryW", "LoadLibraryExA", "LoadLibraryExW",
+        "GetProcAddress"
+    };
+
+    private static readonly HashSet<string> ForbiddenSecurityTypes = new(StringComparer.Ordinal)
+    {
+        "System.Runtime.Loader.AssemblyLoadContext",
+        "System.Runtime.InteropServices.NativeLibrary",
+        "System.Reflection.Emit.DynamicMethod",
+        "System.Reflection.Emit.ILGenerator",
+        "System.Reflection.Emit.AssemblyBuilder",
+        "System.Reflection.Emit.MethodBuilder",
+        "System.Reflection.Emit.TypeBuilder"
+    };
+
+    private static readonly HashSet<(string TypeFullName, string MemberName)> ForbiddenSecurityMembers = new()
+    {
+        ("System.Runtime.InteropServices.Marshal", "GetDelegateForFunctionPointer"),
+        ("System.Reflection.Assembly", "Load"),
+        ("System.Reflection.Assembly", "LoadFile"),
+        ("System.Reflection.Assembly", "LoadFrom"),
+        ("System.Reflection.Assembly", "UnsafeLoadFrom")
     };
 
     private static readonly string[] ForbiddenArchiveFiles =
@@ -393,11 +425,92 @@ internal static class Program
             if (unresolved.Count > 0)
                 Fail("Unresolved PE tokens:\n  " + string.Join("\n  ", unresolved.Take(20)));
             Pass($"All PE tokens resolved ({typeRefCount} TypeRefs, {memberRefCount} MemberRefs, 0 unresolved)");
+
+            // 3. Verify DH 5 host security constraints (matches DungeonHelper.dll 퉧.퉍)
+            VerifyDh5SecurityConstraints(mr);
         }
         finally
         {
             // Non-collectible isolated ALC required by DispatchProxy dynamic interface proxy emission.
         }
+    }
+
+    private static void VerifyDh5SecurityConstraints(MetadataReader mr)
+    {
+        var violations = new List<string>();
+
+        foreach (var mh in mr.MethodDefinitions)
+        {
+            var md = mr.GetMethodDefinition(mh);
+            if ((md.Attributes & MethodAttributes.PinvokeImpl) == 0) continue;
+            var import = md.GetImport();
+            string importName = mr.GetString(import.Name);
+            string methodName = mr.GetString(md.Name);
+            if (ForbiddenPInvokes.Contains(importName) || ForbiddenPInvokes.Contains(methodName))
+                violations.Add($"Forbidden P/Invoke: {importName} ({methodName})");
+        }
+
+        foreach (var trh in mr.TypeReferences)
+        {
+            string fullName = GetTypeRefFullName(mr, mr.GetTypeReference(trh));
+            if (ForbiddenSecurityTypes.Contains(fullName))
+                violations.Add("Forbidden TypeRef: " + fullName);
+        }
+
+        foreach (var mrh in mr.MemberReferences)
+        {
+            var mem = mr.GetMemberReference(mrh);
+            if (mem.Parent.Kind != HandleKind.TypeReference) continue;
+            string ownerFullName = GetTypeRefFullName(mr, mr.GetTypeReference((TypeReferenceHandle)mem.Parent));
+            string memberName = mr.GetString(mem.Name);
+            if (ForbiddenSecurityMembers.Contains((ownerFullName, memberName)))
+                violations.Add($"Forbidden MemberRef: {ownerFullName}.{memberName}");
+        }
+
+        foreach (var cah in mr.CustomAttributes)
+        {
+            var ca = mr.GetCustomAttribute(cah);
+            string? attrTypeName = ResolveAttributeTypeName(mr, ca.Constructor);
+            if (attrTypeName == "System.Security.UnverifiableCodeAttribute")
+                violations.Add("Unsafe/unverifiable code attribute present: " + attrTypeName);
+        }
+
+        if (violations.Count > 0)
+            Fail("DH 5 security constraint violation(s):\n  " + string.Join("\n  ", violations));
+        Pass("DH 5 security verifier constraints passed (0 forbidden P/Invokes, types, members, or unsafe code)");
+    }
+
+    private static string GetTypeRefFullName(MetadataReader mr, TypeReference tr)
+    {
+        string ns = mr.GetString(tr.Namespace);
+        string name = mr.GetString(tr.Name);
+        return string.IsNullOrEmpty(ns) ? name : $"{ns}.{name}";
+    }
+
+    private static string? ResolveAttributeTypeName(MetadataReader mr, EntityHandle ctor)
+    {
+        if (ctor.Kind == HandleKind.MemberReference)
+        {
+            var mem = mr.GetMemberReference((MemberReferenceHandle)ctor);
+            if (mem.Parent.Kind == HandleKind.TypeReference)
+                return GetTypeRefFullName(mr, mr.GetTypeReference((TypeReferenceHandle)mem.Parent));
+            if (mem.Parent.Kind == HandleKind.TypeDefinition)
+            {
+                var td = mr.GetTypeDefinition((TypeDefinitionHandle)mem.Parent);
+                string ns = mr.GetString(td.Namespace);
+                string name = mr.GetString(td.Name);
+                return string.IsNullOrEmpty(ns) ? name : $"{ns}.{name}";
+            }
+        }
+        else if (ctor.Kind == HandleKind.MethodDefinition)
+        {
+            var md = mr.GetMethodDefinition((MethodDefinitionHandle)ctor);
+            var td = mr.GetTypeDefinition(md.GetDeclaringType());
+            string ns = mr.GetString(td.Namespace);
+            string name = mr.GetString(td.Name);
+            return string.IsNullOrEmpty(ns) ? name : $"{ns}.{name}";
+        }
+        return null;
     }
 
     private static Type? ResolveTypeRef(MetadataReader mr, TypeReferenceHandle handle, AssemblyLoadContext alc, Assembly sdkAsm, Assembly pluginAsm)
@@ -612,11 +725,160 @@ internal static class Program
             // Test Dispose()
             iPluginType.GetMethod("Dispose")!.Invoke(plugin, null);
             Require(mockState.ChatRemoved, "Dispose() cleanly unregistered /alch command and stopped worker");
+
+            // 5. Verify zero-jitter tabular active countdown layout in Dh5ReactionTimerUi across 12.0 -> 0.1
+            VerifyZeroJitterHudLayout(pluginAsm);
         }
         finally
         {
             // Non-collectible isolated ALC required by DispatchProxy dynamic interface proxy emission.
         }
+    }
+
+    private static void VerifyZeroJitterHudLayout(Assembly pluginAsm)
+    {
+        const BindingFlags staticFlags = BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public;
+        var uiType = pluginAsm.GetType("VoK.ReactionTimer.Dh5ReactionTimerUi")!;
+        var viewType = pluginAsm.GetType("VoK.ReactionTimer.TimerView")!;
+        var modeType = pluginAsm.GetType("VoK.ReactionTimer.TimerMode")!;
+        var reactionType = pluginAsm.GetType("VoK.ReactionTimer.Reaction")!;
+        var settingsType = pluginAsm.GetType("VoK.ReactionTimer.Settings")!;
+        var presType = pluginAsm.GetType("VoK.ReactionTimer.HudPresentation")!;
+
+        var measureTabular = uiType.GetMethod("MeasureTabularMetrics", staticFlags)!;
+        var measurePill = uiType.GetMethod("MeasureCompactPillLayout", staticFlags)!;
+        var measureDonut = uiType.GetMethod("MeasureRadialDonut", staticFlags)!;
+        var computeRadialOrigin = uiType.GetMethod("ComputeRadialCountdownOrigin", staticFlags)!;
+        var computeDotOffset = uiType.GetMethod("ComputeCountdownDotOffsetX", staticFlags)!;
+        var countdownPrefix = uiType.GetMethod("CountdownPrefix", staticFlags)!;
+        var textMethod = presType.GetMethod("Text", staticFlags)!;
+
+        // Realistic proportional font metrics where narrow digits ('1'), wide curved digits ('8'),
+        // and '.' have distinct widths AND flat vs curved digits differ in vertical height.
+        static Vector2 ProportionalMeasure(float px, string text)
+        {
+            float scale = px / 28f;
+            float w = 0f;
+            float h = 28f * scale;
+            foreach (char c in text)
+            {
+                w += c switch
+                {
+                    '1' => 10.0f * scale,
+                    '4' or '7' => 14.5f * scale,
+                    '0' or '2' or '3' or '5' or '6' or '8' or '9' => 18.0f * scale,
+                    '.' => 5.5f * scale,
+                    '~' => 16.5f * scale,
+                    ' ' => 7.0f * scale,
+                    _ => 15.0f * scale
+                };
+                if (c is '0' or '2' or '3' or '6' or '8' or '9')
+                    h = MathF.Max(h, 29.4f * scale);
+            }
+            return new Vector2(w, h);
+        }
+
+        const int fontPx = 28;
+        Func<string, Vector2> measureAtFont = s => ProportionalMeasure(fontPx, s);
+        Func<float, string, Vector2> measureHint = (px, s) => ProportionalMeasure(px, s);
+        object metrics = measureTabular.Invoke(null, new object[] { measureAtFont })!;
+
+        int numPx = (int)MathF.Round(Math.Clamp(fontPx * 0.95f, 12f, 96f));
+        Func<string, Vector2> measureAtNum = s => ProportionalMeasure(numPx, s);
+        object numMetrics = measureTabular.Invoke(null, new object[] { measureAtNum })!;
+
+        object settings = Activator.CreateInstance(settingsType)!;
+        var activeMode = Enum.Parse(modeType, "Active");
+        var pyrite = Enum.Parse(reactionType, "Pyrite");
+
+        double[] ticks = { 12.0, 11.9, 11.1, 10.0, 9.9, 9.1, 8.8, 4.7, 2.0, 1.1, 0.1 };
+        Vector2 vpSize = new(1920f, 1080f);
+        float padX = Math.Max(12f, fontPx * 0.42f);
+        float glyphW = Math.Max(12f, fontPx * 0.56f) + Math.Max(6f, fontPx * 0.22f);
+
+        Vector2? firstPillSize = null;
+        Vector2? firstPillMin = null;
+        float? firstPillDotX = null;
+
+        Vector2? firstDonutSize = null;
+        Vector2? firstDonutOrigin = null;
+        float? firstDonutDotX = null;
+
+        foreach (double rem in ticks)
+        {
+            object view = Activator.CreateInstance(viewType, activeMode, pyrite, rem, 12d, false, 1L, "")!;
+            string text = (string)textMethod.Invoke(null, new object[] { view, false })!;
+
+            Vector2 pillSize = (Vector2)measurePill.Invoke(null, new object?[]
+            {
+                fontPx, text, view, false, settings, false, null, true, false, metrics, measureAtFont, measureHint
+            })!;
+            Vector2 pillMin = new(MathF.Round(0.5f * Math.Max(0f, vpSize.X - pillSize.X)), 0f);
+            string prefix = (string)countdownPrefix.Invoke(null, new object[] { view, false })!;
+            float pillDotX = pillMin.X + padX + glyphW + measureAtFont(prefix).X +
+                             (float)computeDotOffset.Invoke(null, new object[] { rem, false, metrics })!;
+
+            if (firstPillSize is null)
+            {
+                firstPillSize = pillSize;
+                firstPillMin = pillMin;
+                firstPillDotX = pillDotX;
+            }
+            else if (pillSize != firstPillSize.Value || pillMin != firstPillMin!.Value || MathF.Abs(pillDotX - firstPillDotX!.Value) > 0.001f)
+            {
+                Fail($"DH 5 CompactPill jitter at {rem:0.0}s: size {firstPillSize} -> {pillSize}, min {firstPillMin} -> {pillMin}, dotX {firstPillDotX} -> {pillDotX}");
+            }
+
+            Vector2 donutSize = (Vector2)measureDonut.Invoke(null, new object?[] { fontPx, null, true, false })!;
+            Vector2 donutMin = new(MathF.Round(0.5f * Math.Max(0f, vpSize.X - donutSize.X)), 0f);
+            float diameter = Math.Clamp(fontPx * 3.1f, 84f, 240f);
+            Vector2 center = new(donutMin.X + donutSize.X * 0.5f, donutMin.Y + 10f + diameter * 0.5f);
+            Vector2 numOrigin = (Vector2)computeRadialOrigin.Invoke(null, new object[] { center, rem, false, numMetrics })!;
+            float donutDotX = numOrigin.X + (float)computeDotOffset.Invoke(null, new object[] { rem, false, numMetrics })!;
+
+            if (firstDonutSize is null)
+            {
+                firstDonutSize = donutSize;
+                firstDonutOrigin = numOrigin;
+                firstDonutDotX = donutDotX;
+            }
+            else if (donutSize != firstDonutSize.Value || numOrigin != firstDonutOrigin!.Value || MathF.Abs(donutDotX - firstDonutDotX!.Value) > 0.001f)
+            {
+                Fail($"DH 5 RadialDonut jitter at {rem:0.0}s: size {firstDonutSize} -> {donutSize}, origin {firstDonutOrigin} -> {numOrigin}, dotX {firstDonutDotX} -> {donutDotX}");
+            }
+        }
+
+        Vector2 baselinePill = firstPillSize!.Value;
+        Vector2 baselineDonut = firstDonutSize!.Value;
+
+        // Also check estimated '~' stability (12.0 -> 0.1) and >=100s 3-column stability (120.0 -> 100.1)
+        Vector2 est12 = (Vector2)measurePill.Invoke(null, new object?[]
+        {
+            fontPx, "PYRITE  ~12.0", Activator.CreateInstance(viewType, activeMode, pyrite, 12.0d, 12d, true, 1L, "")!,
+            false, settings, false, null, true, false, metrics, measureAtFont, measureHint
+        })!;
+        Vector2 est01 = (Vector2)measurePill.Invoke(null, new object?[]
+        {
+            fontPx, "PYRITE  ~0.1", Activator.CreateInstance(viewType, activeMode, pyrite, 0.1d, 12d, true, 1L, "")!,
+            false, settings, false, null, true, false, metrics, measureAtFont, measureHint
+        })!;
+        Require(est12 == est01 && est12.X > baselinePill.X,
+            $"DH 5 estimated '~' countdown preserves 0 px jitter across 12.0 -> 0.1 ({est12.X}x{est12.Y})");
+
+        Vector2 long120 = (Vector2)measurePill.Invoke(null, new object?[]
+        {
+            fontPx, "PYRITE  120.0", Activator.CreateInstance(viewType, activeMode, pyrite, 120.0d, 120d, false, 1L, "")!,
+            false, settings, false, null, true, false, metrics, measureAtFont, measureHint
+        })!;
+        Vector2 long100 = (Vector2)measurePill.Invoke(null, new object?[]
+        {
+            fontPx, "PYRITE  100.1", Activator.CreateInstance(viewType, activeMode, pyrite, 100.1d, 120d, false, 1L, "")!,
+            false, settings, false, null, true, false, metrics, measureAtFont, measureHint
+        })!;
+        Require(long120 == long100 && long120.X > baselinePill.X,
+            $"DH 5 >=100s 3-column countdown preserves 0 px jitter across 120.0 -> 100.1 ({long120.X}x{long120.Y})");
+
+        Pass($"DH 5 CompactPill ({baselinePill.X}x{baselinePill.Y}) & RadialDonut ({baselineDonut.X}x{baselineDonut.Y}) exhibit 0 px jitter across 11 ticks (12.0 -> 0.1)");
     }
 
     private static async Task InvokeChatAsync(MockDdoState state, Assembly sdkAsm, string rest)

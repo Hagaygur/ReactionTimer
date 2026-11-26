@@ -2,7 +2,7 @@
 
 ## Install and use
 
-Download the runtime archive for your host (never install `ReactionTimer-X.Y.Z-source.zip`):
+Download the runtime archive for your host (never install `ReactionTimer-X.Y.Z-source.zip`). Both Dungeon Helper 4 and Dungeon Helper 5 Beta are tested up through `v1.1.1`; later versions after `v1.1.1` are tested on Dungeon Helper 5 only:
 
 - **DH 4 (`ReactionTimer-X.Y.Z-dh4-plugin.zip`):** install via **Settings → Add plugin from zip file**. Contains only `plugins/ReactionTimer/VoK.ReactionTimer.{dll,deps.json,metadata}`.
 - **DH 5 Beta (`ReactionTimer-X.Y.Z-dh5-plugin.zip`):** install via **Plugins → Install from zip**. Signed for `Alch Reaction Timer` with all 8 root files (`VoK.ReactionTimer.dll`, `.deps.json`, `plugin.metadata`, `.pem`, `.manifest`, `.manifest.sig`, `.entitlement`, `.entitlement.sig`).
@@ -17,7 +17,7 @@ Local commands on Windows:
 python -m unittest discover -s ci -p test_*.py -v
 dotnet run --project tests/ReactionTimer.Tests.csproj -c Release -- --contracts dist/contracts.json
 ./ci/Get-Sdk.ps1
-.\build.ps1 -DungeonHelperDir $env:DH_SDK_DIR -Dh5SdkDir $env:DH5_SDK_DIR -Version 1.1.0 -AllowUnsigned
+.\build.ps1 -DungeonHelperDir $env:DH_SDK_DIR -Dh5SdkDir $env:DH5_SDK_DIR -Version 1.1.1 -AllowUnsigned
 ```
 
 ## Diagnose by symptom

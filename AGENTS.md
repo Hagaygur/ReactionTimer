@@ -29,7 +29,7 @@ Build with the .NET 10 SDK (`global.json`). Both projects share portable core lo
 - **Non-blocking SDK usage:** Keep SDK callbacks short. `TimerState` is pure. On DH 4, native windows belong to the HUD STA thread. On DH 5, never call `.Result`/`.GetAwaiter().GetResult()` inside `ClientFrameStep()`, `ImGui_Render()`, or under locks; run `TickAsync()` asynchronously and override `WindowVisible` with a real backing property (default `false`).
 - **HUD & contract preservation:** Keep `FontSizePixels` exact (`10–160`), `(1,1)` corner pixel behavior in `HudWindow.Render` on `Expired`, `HudPresentation.Text(...)` compatibility strings, and all existing `ContractSnapshot.cs` `compatibility.*` keys so SemVer stays `minor` unless intentionally breaking.
 - **Quick-Cast safety:** Default `QuickRespikeEnabled = false`, `QuickRespikeBar = 0`, `QuickRespikeSlot = 0`. Never auto-cast without explicit user configuration.
-- **Evidence accuracy:** Preserve the distinction between executed unit/smoke/`TrustProbe` tests and untested live DDO/Wine/LS gameplay. Never label compilation or synthetic smoke tests as live DDO integration verification.
+- **Evidence accuracy:** Preserve the distinction between executed unit/smoke/`TrustProbe` tests and untested live DDO/Wine/LS gameplay. Never label compilation or synthetic smoke tests as live DDO integration verification. Note that Alchemist Reaction Timer is tested on both DH 4 and DH 5 Beta up through `v1.1.1`, with later versions after `v1.1.1` tested on DH 5 only.
 
 ## Commands from repository root
 
@@ -37,9 +37,9 @@ Build with the .NET 10 SDK (`global.json`). Both projects share portable core lo
 python -m unittest discover -s ci -p test_*.py -v
 dotnet run --project tests/ReactionTimer.Tests.csproj -c Release -- --contracts dist/contracts.json
 ./ci/Get-Sdk.ps1
-.\build.ps1 -DungeonHelperDir $env:DH_SDK_DIR -Dh5SdkDir $env:DH5_SDK_DIR -Version 1.1.0 -AllowUnsigned
-dotnet run --project tests/WindowsSmoke/WindowsSmoke.csproj -c Release -- "src/bin/Release/net8.0-windows/ReactionTimer-1.1.0-dh4-plugin.zip" "$env:DH_SDK_DIR"
-dotnet run --project tests/Dh5Smoke/Dh5Smoke.csproj -c Release -- "dist/ReactionTimer-1.1.0-dh5-plugin.zip" "$env:DH5_SDK_DIR"
+.\build.ps1 -DungeonHelperDir $env:DH_SDK_DIR -Dh5SdkDir $env:DH5_SDK_DIR -Version 1.1.1 -AllowUnsigned
+dotnet run --project tests/WindowsSmoke/WindowsSmoke.csproj -c Release -- "src/bin/Release/net8.0-windows/ReactionTimer-1.1.1-dh4-plugin.zip" "$env:DH_SDK_DIR"
+dotnet run --project tests/Dh5Smoke/Dh5Smoke.csproj -c Release -- "dist/ReactionTimer-1.1.1-dh5-plugin.zip" "$env:DH5_SDK_DIR"
 ```
 
 ## Documentation and completion

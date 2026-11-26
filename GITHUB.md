@@ -55,5 +55,5 @@ Conventional commits (`feat:`, `type!:`, `BREAKING CHANGE:`) touching `src/**/*.
 python -m unittest discover -s ci -p test_*.py -v
 dotnet run --project tests/ReactionTimer.Tests.csproj -c Release -- --contracts dist/contracts.json
 ./ci/Get-Sdk.ps1
-.\build.ps1 -DungeonHelperDir $env:DH_SDK_DIR -Dh5SdkDir $env:DH5_SDK_DIR -Version 1.1.0 -AllowUnsigned
+.\build.ps1 -DungeonHelperDir $env:DH_SDK_DIR -Dh5SdkDir $env:DH5_SDK_DIR -Version 1.1.1 -AllowUnsigned
 ```

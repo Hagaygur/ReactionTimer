@@ -4,7 +4,7 @@ Human counterpart: [Background](../human/BACKGROUND.md). Repository instructions
 
 ## Required outcome
 
-Maintain a DH-only, compact, transparent DDO Alchemist Reaction Spike HUD across **DH 4 (`4.2.1.0`)** and **DH 5 Beta (`5.3.0.0`)** without RTSS or separate timer executables. Preserve exact pixel font settings (`10–160`), `ContractSnapshot.cs` `compatibility.*` stability (`v1.1.0` minor bump), runtime-only installation ZIPs, and strict private-key hygiene (`*.key` / `*.pfx` never committed or packaged).
+Maintain a DH-only, compact, transparent DDO Alchemist Reaction Spike HUD across **DH 4 (`4.2.1.0`)** and **DH 5 Beta (`5.3.0.0`)** without RTSS or separate timer executables. Preserve exact pixel font settings (`10–160`), `ContractSnapshot.cs` `compatibility.*` stability, zero-twitch tabular countdown layout, runtime-only installation ZIPs, and strict private-key hygiene (`*.key` / `*.pfx` never committed or packaged). Note the support cutoff: tested on both DH 4 and DH 5 Beta up through `v1.1.1`, with later versions after `v1.1.1` tested on DH 5 only.
 
 ## Historical evidence to retain
 

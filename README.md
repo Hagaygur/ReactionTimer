@@ -1,10 +1,27 @@
 # Alchemist Reaction Timer
 
-A Dungeon Helper plugin for **Dungeons & Dragons Online (DDO)** Alchemist Reaction Spikes. Runs inside Dungeon Helper with no RTSS or external timer executable, supporting both **Dungeon Helper 4** (`VoK.Sdk 4.2.1.0`, `.NET 8 Windows`) and **Dungeon Helper 5 Beta** (`VoK.Sdk 5.3.0.0`, `.NET 10 x64` in-game `ImGuiNET` overlay).
+[![Latest Release](https://img.shields.io/github/v/release/Hagaygur/ReactionTimer?label=Latest%20Release)](https://github.com/Hagaygur/ReactionTimer/releases/latest)
+[![Build, test and release](https://github.com/Hagaygur/ReactionTimer/actions/workflows/build.yml/badge.svg)](https://github.com/Hagaygur/ReactionTimer/actions/workflows/build.yml)
+[![Repository](https://img.shields.io/badge/GitHub-Hagaygur%2FReactionTimer-181717?logo=github)](https://github.com/Hagaygur/ReactionTimer)
 
-## Developer documentation
+**[Download Latest Release](https://github.com/Hagaygur/ReactionTimer/releases/latest)** · [Repository Home](https://github.com/Hagaygur/ReactionTimer) · [Documentation Map](docs/README.md) · [CI & Signing Guide](GITHUB.md) · [Agent Guide](AGENTS.md)
 
-Open **ReactionTimer.sln** in Visual Studio or VS Code. Start with the [documentation map](docs/README.md), [IDE setup](docs/human/DEVELOPMENT.md), [GITHUB.md](GITHUB.md) for CI/signing, or [AGENTS.md](AGENTS.md) for AI coding assistants.
+A Dungeon Helper plugin for **Dungeons & Dragons Online (DDO)** Alchemist Reaction Spikes. Runs inside Dungeon Helper with no RTSS or external timer executable, providing a rock-steady, zero-twitch countdown HUD across **Dungeon Helper 4** (`VoK.Sdk 4.2.1.0`, `.NET 8 Windows`) and **Dungeon Helper 5 Beta** (`VoK.Sdk 5.3.0.0`, `.NET 10 x64` in-game `ImGuiNET` overlay).
+
+> [!IMPORTANT]
+> **Choose the right ZIP before installing:**
+> - **Dungeon Helper 4:** download **`ReactionTimer-X.Y.Z-dh4-plugin.zip`** (`Settings -> Add plugin from zip file`).
+> - **Dungeon Helper 5 Beta:** download **`ReactionTimer-X.Y.Z-dh5-plugin.zip`** (`Plugins -> Install from zip`).
+> - **Never install `ReactionTimer-X.Y.Z-source.zip`** into Dungeon Helper — that archive is source code and CI/dev files only.
+
+> [!NOTE]
+> **Support & Testing Policy:**
+> **Alchemist Reaction Timer is tested on both Dungeon Helper 4 and Dungeon Helper 5 Beta up through `v1.1.1` (the current version), with later versions after `v1.1.1` tested on Dungeon Helper 5 only.**
+> `ReactionTimer-1.1.1-dh4-plugin.zip` remains available on [GitHub Releases](https://github.com/Hagaygur/ReactionTimer/releases/latest) for Dungeon Helper 4 users.
+>
+> - **Dungeon Helper 4 (`v1.1.1`):** Verified locally with Release + Debug compilation, `101` C# behavioral checks, and `WindowsSmoke` (3-entry runtime ZIP, `SettingsDialog` + 3 themes, 11-tick `0 px` zero-twitch HUD layout, `(1,1)` corner pixel contract, and enlarged `RE-SPIKE` checks). Live DDO gameplay and Lossless Scaling WGC/DXGI capture remain user integration checks.
+> - **Dungeon Helper 5 Beta (`v1.1.1`):** Verified locally and in CI with `Dh5Smoke --require-signed` (8-entry signed root layout, Authenticode + manifest + entitlement verification, all 4 `DungeonHelper.dll` security constraint rules, `CompactPill` & `RadialDonut` zero-jitter checks, and mocked `IPlugin` lifecycle), plus local verification against real DH `5.0.858` `DungeonHelper.dll` (`퉧.퉍.퉧` modes `0` and `1`), `AuthenticodeVerifier.IsSignatureValid`, `PluginsSectionViewModel.InstallFromZip`, and `PluginTrustGate`. Live DDO DX10/11 gameplay remains a user integration check.
+> - **Linux / Wine / Proton:** Full solution cross-compilation (`Debug` + `Release`), `101` C# checks, `32` Python policy/SDK/signing/README checks, and `Dh5Smoke` run on Ubuntu in GitHub Actions CI. `IsWineRuntime` (`ntdll!wine_get_version`) guards DH 4 capture exclusion and foreground checks; live Linux/Wine DDO gameplay has not been tested.
 
 ## DDO Alchemist mechanics
 
@@ -21,6 +38,7 @@ Alchemists pair three Spell Primers (**Crimsonite**, **Gildleaf**, **Ceruleite**
 
 ## Overlay & plugin features
 
+- **Zero-twitch tabular countdown layout (`v1.1.1`):** Both DH 4 (`HudWindow.TabularMetrics`) and DH 5 (`Dh5ReactionTimerUi.TabularMetrics`) lay out countdown digits (`0–9`), `.`, and `~` in fixed-width tabular cells with cached integer line heights and constant `>= 2` integer columns (`12.0` -> `0.0`). On DH 4, `UpdateLayeredWindow` (`Present`) commits the new bitmap atomically before WinForms `ClientSize`/`Location` sync; on DH 5, both `CompactPill` and `RadialDonut` keep constant pill/card geometry and locked countdown column origins so tenths ticks never shift horizontally or vertically.
 - **Analog depletion bar & calm-to-urgent lifecycle:** Beneath the countdown (`PYRITE  8.4`), an optional 6px smooth depletion bar (`ShowDepletionBar`) marks `WarningSeconds` so remaining spike time can be judged peripherally without reading digits. Approaching `WarningSeconds` transitions smoothly to warning colors; expiry shows **RE-SPIKE** with bounded `<= 2 Hz` flashing for `RespikeAlertSeconds` (default `5`, `0–60`, `0` disables).
 - **3 shared DDO × Material Design 3 themes (`UiTheme`):** Available on both DH 4 and DH 5 (`Theme` setting, or `/alch theme` in DH 5):
   - `EberronGold` (*Eberron Obsidian & Gold*, default): `#111318`/`#1A1D24`/`#222630`/`#2C313E`, outline `#4A5368`, primary `#E2B75B`, secondary `#56CCF2`.
@@ -32,7 +50,7 @@ Alchemists pair three Spell Primers (**Crimsonite**, **Gildleaf**, **Ceruleite**
 
 ## Install or update
 
-Choose the release archive matching your Dungeon Helper version (**never** install `ReactionTimer-X.Y.Z-source.zip` into Dungeon Helper):
+Download the runtime archive for your host from [GitHub Releases](https://github.com/Hagaygur/ReactionTimer/releases/latest) (**never** install `ReactionTimer-X.Y.Z-source.zip` into Dungeon Helper):
 
 ### Option A: Dungeon Helper 4 (`4.2.1.0`)
 
@@ -91,12 +109,12 @@ In **Settings / effects**, trigger a spike, click **Refresh**, select the tempor
 
 ## Lossless Scaling & platform status
 
-- **Windows 11:** Verified locally with .NET 10 SDK compilation, C# behavioral checks, DH 4 `WindowsSmoke`, DH 5 `Dh5Smoke`, and real DH 5.0.858 `PluginTrustGate` / `InstallFromZip` verification. On DH 4 with Lossless Scaling, confirm `Capture exclusion: ON` and test Preview in WGC and DXGI with the configuration panel closed (Windows accepting `WDA_EXCLUDEFROMCAPTURE` `0x11` is not proof that every LS backend honors it). On DH 5 Beta, ImGui renders inside DDO's DX10/11 frame with no separate HWND.
-- **Linux / Wine / Proton:** Solution builds (`Debug` + `Release`), portable C# checks, Python policy/SDK/signing checks, and `Dh5Smoke` cross-compile and execute on Ubuntu in GitHub Actions CI. `IsWineRuntime` (`ntdll!wine_get_version`) guards DH 4 capture exclusion (`WDA_EXCLUDEFROMCAPTURE`) and foreground checks on Wine/Proton; live Linux/Wine DDO gameplay has not been tested.
+- **Windows 11:** Verified locally with .NET 10 SDK compilation (`0` warnings/errors), `101` C# behavioral checks, DH 4 `WindowsSmoke`, DH 5 `Dh5Smoke --require-signed`, and real DH `5.0.858` `DungeonHelper.dll` `퉧.퉍.퉧` / `PluginTrustGate` / `InstallFromZip` verification. On DH 4 with Lossless Scaling, confirm `Capture exclusion: ON` and test Preview in WGC and DXGI with the configuration panel closed (Windows accepting `WDA_EXCLUDEFROMCAPTURE` `0x11` is not proof that every LS backend honors it). On DH 5 Beta, ImGui renders inside DDO's DX10/11 frame with no separate HWND.
+- **Linux / Wine / Proton:** Solution builds (`Debug` + `Release`), portable C# checks, Python policy/SDK/signing/README checks, and `Dh5Smoke` cross-compile and execute on Ubuntu in GitHub Actions CI. `IsWineRuntime` (`ntdll!wine_get_version`) guards DH 4 capture exclusion (`WDA_EXCLUDEFROMCAPTURE`) and foreground checks on Wine/Proton; live Linux/Wine DDO gameplay has not been tested.
 
 ## Implementation, research basis & rebuilding
 
-Thin SDK callbacks enqueue work onto non-blocking engines (`TimerEngine` on DH 4 with 10 Hz worker + STA GDI+ DIB `HudWindow`; async `Dh5TimerEngine` on DH 5 using `InTownAsync()`, `GetCurrentCharacterAsync()`, `IActiveEffect.Expiration`, `IReadOnlyList<IProperty>`, and `ImGuiNET` dynamic font sizing).
+Thin SDK callbacks enqueue work onto non-blocking engines (`TimerEngine` on DH 4 with 10 Hz worker + STA GDI+ DIB `HudWindow`; async `Dh5TimerEngine` on DH 5 using `InTownAsync()`, `GetCurrentCharacterAsync()`, `IActiveEffect.Expiration`, `IReadOnlyList<IProperty>`, and `ImGuiNET` dynamic font sizing). Developer docs live in [docs/README.md](docs/README.md), [GITHUB.md](GITHUB.md), and [AGENTS.md](AGENTS.md).
 
 ### Design & academic HCI references
 
@@ -110,13 +128,14 @@ Extract `ReactionTimer-X.Y.Z-source.zip` and run from the repository root (with 
 
 ```powershell
 ./ci/Get-Sdk.ps1
-./build.ps1 -DungeonHelperDir $env:DH_SDK_DIR -Dh5SdkDir $env:DH5_SDK_DIR -Version 1.1.0 -AllowUnsigned
+./build.ps1 -DungeonHelperDir $env:DH_SDK_DIR -Dh5SdkDir $env:DH5_SDK_DIR -Version 1.1.1 -AllowUnsigned
 # Signed DH 5 bundle (supply your author key path via -KeyFile or DH_AUTHOR_KEY_FILE/DH_AUTHOR_KEY_B64):
-./build.ps1 -DungeonHelperDir $env:DH_SDK_DIR -Dh5SdkDir $env:DH5_SDK_DIR -Version 1.1.0 -KeyFile C:\path\to\author.key
+./build.ps1 -DungeonHelperDir $env:DH_SDK_DIR -Dh5SdkDir $env:DH5_SDK_DIR -Version 1.1.1 -KeyFile C:\path\to\author.key
 ```
 
 ## Release history
 
+- **`v1.1.1`** — Eliminated countdown HUD twitching on both DH 4 (`HudWindow.TabularMetrics` + atomic `UpdateLayeredWindow` ordering) and DH 5 Beta (`Dh5ReactionTimerUi.TabularMetrics` across `CompactPill` and `RadialDonut`); added `Dh5Smoke` 4-rule DH 5 security-constraint scanner + `11`-tick zero-jitter checks in `WindowsSmoke` and `Dh5Smoke`; overhauled `README.md` and established the DH 4 + DH 5 Beta testing cutoff through `v1.1.1` (post-`v1.1.1` versions tested on DH 5 only).
 - **`v1.1.0`** — Dual **Dungeon Helper 4** (`ReactionTimer-1.1.0-dh4-plugin.zip`, `net8.0-windows`, `VoK.Sdk 4.2.1.0`) + **Dungeon Helper 5 Beta** (`ReactionTimer-1.1.0-dh5-plugin.zip`, `net10.0` `x64`, `VoK.Sdk 5.3.0.0`, community-entitlement & Authenticode signed, in-frame `ImGuiNET` Compact Pill / Radial Donut HUD, SP micro-bar, `/alch` commands, optional `InvokeHotbar` Quick Re-Spike); 3 shared DDO × Material Design 3 themes (`EberronGold`, `CannithArcane`, `FeywildTwilight`); `SuppressAlertsInTown`, `ShowDepletionBar`, base-stance next-primer hints, `IsWineRuntime` Wine/Proton fallbacks, `Dh5Smoke`, and orphan-tag CI fix (`--tag-floor`).
 - **`v1.0.1`** *(git tag only; no GitHub Release assets published)* — README documentation update.
 - **`v1.0.0`** — Initial stable DH 4 release with independent transparent click-through HUD, exact `10–160px` integer font input, `WDA_EXCLUDEFROMCAPTURE`, and effect DID overrides.

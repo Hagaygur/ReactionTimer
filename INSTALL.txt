@@ -3,6 +3,10 @@ ALCHEMIST REACTION TIMER
 INSTALL THE ARCHIVE MATCHING YOUR DUNGEON HELPER VERSION.
 NEVER install ReactionTimer-X.Y.Z-source.zip into Dungeon Helper.
 
+SUPPORT & TESTING POLICY:
+Tested on both Dungeon Helper 4 and Dungeon Helper 5 Beta up through v1.1.1;
+later versions after v1.1.1 are tested on Dungeon Helper 5 only.
+
 === DUNGEON HELPER 4 (4.2.1.0, Windows .NET 8) ===
 Install ReactionTimer-X.Y.Z-dh4-plugin.zip directly.
 1. Close DDO. Open Dungeon Helper Settings > Add plugin from zip file.
